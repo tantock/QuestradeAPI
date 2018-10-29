@@ -75,12 +75,14 @@ namespace QuestradeCmd
                 Console.WriteLine("********Questrade API Command-Line Interface*********\nPlease Select a number from the menu below:");
                 Console.WriteLine("1. Retrieve and print candlestick data");
                 Console.WriteLine("2. Query by name");
+                Console.WriteLine("3. Get stream port");
+                Console.WriteLine("4. Connect to stream");
                 Console.WriteLine("0. Exit");
                 menuEntry = Console.ReadLine();
                 Console.WriteLine();
                 switch (menuEntry)
                 {
-                    
+
                     #region Download candlestick data case
                     case "1":
                         DateTime start = new DateTime();
@@ -174,7 +176,7 @@ namespace QuestradeCmd
 
                                         } while (!correctFormat);
 
-                                        
+
                                     }
                                 }
                                 else
@@ -194,11 +196,63 @@ namespace QuestradeCmd
                         Console.Write("Please enter a search query: ");
                         consoleEntry = Console.ReadLine();
                         var result = qTrade.symbolSearch(consoleEntry).Result;
-                        Console.WriteLine(string.Format("\n{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}\n--------------------------------------------------------------", "Symbol","Symbol ID", "Exchange","Description"));
-                        for(int i = 0; i < result.symbols.Length; i++)
+                        Console.WriteLine(string.Format("\n{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}\n--------------------------------------------------------------", "Symbol", "Symbol ID", "Exchange", "Description"));
+                        for (int i = 0; i < result.symbols.Length; i++)
                         {
-                            Console.WriteLine(string.Format("{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}", result.symbols[i].symbol, result.symbols[i].symbolId,result.symbols[i].listingExchange,result.symbols[i].description));
+                            Console.WriteLine(string.Format("{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}", result.symbols[i].symbol, result.symbols[i].symbolId, result.symbols[i].listingExchange, result.symbols[i].description));
                         }
+                        break;
+                    case "3":
+                        Console.WriteLine("Select the connection type:");
+                        for (int i = 0; i < 2; i++)
+                        {
+                            Console.WriteLine(string.Format("{0}. {1}", i + 1, ((Questrade.streamType)i).ToString()));
+
+                        }
+                        int selection;
+                        bool validEntry = int.TryParse(Console.ReadLine(), out selection);
+                        while (!validEntry || selection < 1 || selection > 2)
+                        {
+                            Console.WriteLine("Invalid selection.");
+                            validEntry = int.TryParse(Console.ReadLine(), out selection);
+                        }
+                        Console.WriteLine("{0} port: {1}", (Questrade.streamType)(selection - 1), qTrade.GetStreamPort((Questrade.streamType)(selection - 1)).Result.streamPort);
+                        break;
+                    case "4":
+                        Console.WriteLine("Select the connection type:");
+                        for (int i = 0; i < 2; i++)
+                        {
+                            Console.WriteLine(string.Format("{0}. {1}", i + 1, ((Questrade.streamType)i).ToString()));
+
+                        }
+                        validEntry = int.TryParse(Console.ReadLine(), out selection);
+                        while (!validEntry || selection < 1 || selection > 2)
+                        {
+                            Console.WriteLine("Invalid selection.");
+                            validEntry = int.TryParse(Console.ReadLine(), out selection);
+                        }
+
+                        Console.WriteLine("Enter port: ");
+                        int port;
+                        validEntry = int.TryParse(Console.ReadLine(), out port);
+                        while (!validEntry)
+                        {
+                            Console.WriteLine("Invalid entry.");
+                            validEntry = int.TryParse(Console.ReadLine(), out port);
+                        }
+                        System.Threading.CancellationToken cancelToken = new System.Threading.CancellationToken();
+
+                        var connectionSuccess = qTrade.MakeConnection((Questrade.streamType)(selection - 1), port, cancelToken).Result;
+
+                        if (connectionSuccess)
+                        {
+                            Console.WriteLine("Successfully connecting to streaming service");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Connection Unsucessful");
+                        }
+
                         break;
                 }
                 Console.WriteLine();

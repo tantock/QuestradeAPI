@@ -4,9 +4,16 @@ using System.Net.Http;
 using System.Web;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using System.Collections.Generic;
+using System.Net.WebSockets;
 
 namespace QuestradeAPI
 {
+    public class StreamPort
+    {
+        public int streamPort { get; set; }
+    }
+
     public class AuthenticateResp
     {
         public string access_token { get; set; }
@@ -60,6 +67,7 @@ namespace QuestradeAPI
         private string _accessToken = "";
         static HttpClient authClient = new HttpClient();
         static HttpClient apiClient = new HttpClient();
+        static ClientWebSocket wsClient = new ClientWebSocket();
         private AuthenticateResp _auth = null;
 
         public enum HistoricalGrandularity { OneMinute,TwoMinutes, ThreeMinutes, FourMinutes, FiveMinutes, TenMinutes, FifteenMinutes, TwentyMinutes, HalfHour,OneHour,TwoHour,FourHour,OneDay,OneWeek,OneMonth,OneYear }
@@ -85,6 +93,9 @@ namespace QuestradeAPI
                     var authObj = new AuthenticateResp();
                     _auth = JsonConvert.DeserializeObject<AuthenticateResp>(resp.Content.ReadAsStringAsync().Result);
                     apiClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", string.Format("{0} {1}", _auth.token_type, _auth.access_token));
+                    //streamClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", string.Format("{0}", _auth.access_token));
+                    apiClient.BaseAddress = new Uri(_auth.api_server);
+                    //streamClient.BaseAddress = new Uri(_auth.api_server);
                     return resp.StatusCode;
                 }
                 else
@@ -103,7 +114,7 @@ namespace QuestradeAPI
         public async Task<Candles> GetCandles(string id,DateTime start, DateTime end,HistoricalGrandularity gran)
         {
             
-            var resp = await apiClient.GetAsync(string.Format("{0}v1/markets/candles/{1}?startTime={2}&endTime={3}&interval={4}", _auth.api_server,id,DateTimeToString(start), DateTimeToString(end),gran.ToString()));
+            var resp = await apiClient.GetAsync(string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}",id,DateTimeToString(start), DateTimeToString(end),gran.ToString()));
 
 
             if (resp.IsSuccessStatusCode)
@@ -126,7 +137,7 @@ namespace QuestradeAPI
 
         public async Task<Symbols> symbolSearch(string query)
         {
-            var resp = await apiClient.GetAsync(string.Format("{0}v1/symbols/search?prefix={1}", _auth.api_server,query));
+            var resp = await apiClient.GetAsync(string.Format("v1/symbols/search?prefix={0}",query));
 
             if (resp.IsSuccessStatusCode)
             {
@@ -138,5 +149,58 @@ namespace QuestradeAPI
                 throw new HttpRequestException(resp.StatusCode.ToString());
             }
         }
+
+        public enum streamType { RawSocket,WebSocket}
+
+        public async Task<StreamPort> GetStreamPort(streamType type)
+        {
+            var resp = await apiClient.GetAsync(string.Format("v1/notifications?mode={0}",type.ToString()));
+
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = resp.Content.ReadAsStringAsync().Result;
+                return JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result);
+            }
+            else
+            {
+                throw new HttpRequestException(resp.StatusCode.ToString());
+            }
+        }
+
+        public async Task<bool> MakeConnection(streamType type,int port,System.Threading.CancellationToken cancelToken)
+        {
+            switch (type)
+            {
+                case streamType.WebSocket:
+                    var api_base = new Uri(_auth.api_server);
+                    var streamUrl = new Uri(string.Format("{0}{1}:{2}/",@"wss://",api_base.Host,port));
+
+                    ClientWebSocket wsClient = new ClientWebSocket();
+
+                    await wsClient.ConnectAsync(streamUrl, cancelToken);
+
+                    ArraySegment<byte> message = new ArraySegment<byte>(System.Text.Encoding.ASCII.GetBytes(_auth.access_token));
+
+                    await wsClient.SendAsync(message, WebSocketMessageType.Text, true, cancelToken);
+
+                    ArraySegment<byte> recieveBuffer = new ArraySegment<byte>(new byte[128]); //16bytes for success message, 49 bytes for invalid token message
+
+                    var resp = await wsClient.ReceiveAsync(recieveBuffer, cancelToken);
+
+                    var respStr = System.Text.Encoding.UTF8.GetString(recieveBuffer.Array,0,16);
+                    
+                    if(respStr.Contains("success"))
+                    {
+                        return true;
+                    }
+
+                    break;
+            }
+
+            return false;
+
+        }
+
+        
     }
 }
