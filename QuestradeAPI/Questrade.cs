@@ -5,7 +5,7 @@ using System.Web;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using System.Collections.Generic;
-using System.Net.WebSockets;
+using WebSocketSharp.Net;
 
 namespace QuestradeAPI
 {
@@ -33,6 +33,32 @@ namespace QuestradeAPI
         public double close { get; set; }
         public int volume { get; set; }
         public double VWAP { get; set; }
+    }
+
+    public class Quote
+    {
+        public int symbol { get; set; }
+        public string symbolId { get; set; }
+        public string tier { get; set; } //TODO change to enum
+        public double bidPrice { get; set; }
+        public int bidSize { get; set; }
+        public double askPrice { get; set; }
+        public int askSize { get; set; }
+        public double lastTradeTrHrs { get; set; }
+        public double lastTradePrice { get; set; }
+        public int lastTradeSize { get; set; }
+        public string lastTradeTick { get; set; } //TODO change to enum
+        public int volume { get; set; }
+        public double openPrice { get; set; }
+        public double highPrice { get; set; }
+        public double lowPrice { get; set; }
+        public bool delay { get; set; }
+        public bool isHalted { get; set; }
+    }
+
+    public class Quotes
+    {
+        Quote[] quotes { get; set; }
     }
 
     public class Candles
@@ -67,7 +93,7 @@ namespace QuestradeAPI
         private string _accessToken = "";
         static HttpClient authClient = new HttpClient();
         static HttpClient apiClient = new HttpClient();
-        static ClientWebSocket wsClient = new ClientWebSocket();
+        static WebSocketSharp.WebSocket notificationClient;
         private AuthenticateResp _auth = null;
 
         public enum HistoricalGrandularity { OneMinute,TwoMinutes, ThreeMinutes, FourMinutes, FiveMinutes, TenMinutes, FifteenMinutes, TwentyMinutes, HalfHour,OneHour,TwoHour,FourHour,OneDay,OneWeek,OneMonth,OneYear }
@@ -78,7 +104,7 @@ namespace QuestradeAPI
             _token = token;
         }
 
-        public async Task<HttpStatusCode> Authenticate(Action<string> authenticateCallback)
+        public async Task<System.Net.HttpStatusCode> Authenticate(Action<string> authenticateCallback)
         {
             if(_auth == null)
             {
@@ -152,55 +178,54 @@ namespace QuestradeAPI
 
         public enum streamType { RawSocket,WebSocket}
 
-        public async Task<StreamPort> GetStreamPort(streamType type)
+        Action<string> OnMessageWrapper;
+
+        /// <summary>
+        /// This method calls the OnMessageWrapper method
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        public void MakeConnection_OnMessage(object sender, WebSocketSharp.MessageEventArgs e)
         {
-            var resp = await apiClient.GetAsync(string.Format("v1/notifications?mode={0}",type.ToString()));
+            if (e.IsText)
+            {
+                OnMessageWrapper(e.Data);
+            }
+            if (e.IsBinary)
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        public async Task<bool> SubToOrderNotif(Action<string> OnMessageCallback)
+        {
+
+            var resp = await apiClient.GetAsync(string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));
 
             if (resp.IsSuccessStatusCode)
             {
                 var result = resp.Content.ReadAsStringAsync().Result;
-                return JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result);
+                var port = JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result);
+
+
+                var api_base = new Uri(_auth.api_server);
+                var streamUrl = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, port.streamPort));
+                OnMessageWrapper = OnMessageCallback;
+
+                notificationClient = new WebSocketSharp.WebSocket(streamUrl.OriginalString);
+                notificationClient.OnMessage += MakeConnection_OnMessage;
+
+                notificationClient.Connect();
+
+                notificationClient.Send(_auth.access_token);
+
+                return true;
             }
             else
             {
                 throw new HttpRequestException(resp.StatusCode.ToString());
             }
+            
         }
-
-        public async Task<bool> MakeConnection(streamType type,int port,System.Threading.CancellationToken cancelToken)
-        {
-            switch (type)
-            {
-                case streamType.WebSocket:
-                    var api_base = new Uri(_auth.api_server);
-                    var streamUrl = new Uri(string.Format("{0}{1}:{2}/",@"wss://",api_base.Host,port));
-
-                    ClientWebSocket wsClient = new ClientWebSocket();
-
-                    await wsClient.ConnectAsync(streamUrl, cancelToken);
-
-                    ArraySegment<byte> message = new ArraySegment<byte>(System.Text.Encoding.ASCII.GetBytes(_auth.access_token));
-
-                    await wsClient.SendAsync(message, WebSocketMessageType.Text, true, cancelToken);
-
-                    ArraySegment<byte> recieveBuffer = new ArraySegment<byte>(new byte[128]); //16bytes for success message, 49 bytes for invalid token message
-
-                    var resp = await wsClient.ReceiveAsync(recieveBuffer, cancelToken);
-
-                    var respStr = System.Text.Encoding.UTF8.GetString(recieveBuffer.Array,0,16);
-                    
-                    if(respStr.Contains("success"))
-                    {
-                        return true;
-                    }
-
-                    break;
-            }
-
-            return false;
-
-        }
-
-        
     }
 }

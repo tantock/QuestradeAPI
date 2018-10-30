@@ -3,12 +3,18 @@ using QuestradeAPI;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace QuestradeCmd
 {
     class Program
     {
         public static void printLine(string message)
+        {
+            Console.WriteLine(message);
+        }
+
+        private static void WebsocketMsgWrapperCallback(string message)
         {
             Console.WriteLine(message);
         }
@@ -75,8 +81,7 @@ namespace QuestradeCmd
                 Console.WriteLine("********Questrade API Command-Line Interface*********\nPlease Select a number from the menu below:");
                 Console.WriteLine("1. Retrieve and print candlestick data");
                 Console.WriteLine("2. Query by name");
-                Console.WriteLine("3. Get stream port");
-                Console.WriteLine("4. Connect to stream");
+                Console.WriteLine("3. Subscribe to order notifications");
                 Console.WriteLine("0. Exit");
                 menuEntry = Console.ReadLine();
                 Console.WriteLine();
@@ -203,56 +208,8 @@ namespace QuestradeCmd
                         }
                         break;
                     case "3":
-                        Console.WriteLine("Select the connection type:");
-                        for (int i = 0; i < 2; i++)
-                        {
-                            Console.WriteLine(string.Format("{0}. {1}", i + 1, ((Questrade.streamType)i).ToString()));
-
-                        }
-                        int selection;
-                        bool validEntry = int.TryParse(Console.ReadLine(), out selection);
-                        while (!validEntry || selection < 1 || selection > 2)
-                        {
-                            Console.WriteLine("Invalid selection.");
-                            validEntry = int.TryParse(Console.ReadLine(), out selection);
-                        }
-                        Console.WriteLine("{0} port: {1}", (Questrade.streamType)(selection - 1), qTrade.GetStreamPort((Questrade.streamType)(selection - 1)).Result.streamPort);
-                        break;
-                    case "4":
-                        Console.WriteLine("Select the connection type:");
-                        for (int i = 0; i < 2; i++)
-                        {
-                            Console.WriteLine(string.Format("{0}. {1}", i + 1, ((Questrade.streamType)i).ToString()));
-
-                        }
-                        validEntry = int.TryParse(Console.ReadLine(), out selection);
-                        while (!validEntry || selection < 1 || selection > 2)
-                        {
-                            Console.WriteLine("Invalid selection.");
-                            validEntry = int.TryParse(Console.ReadLine(), out selection);
-                        }
-
-                        Console.WriteLine("Enter port: ");
-                        int port;
-                        validEntry = int.TryParse(Console.ReadLine(), out port);
-                        while (!validEntry)
-                        {
-                            Console.WriteLine("Invalid entry.");
-                            validEntry = int.TryParse(Console.ReadLine(), out port);
-                        }
-                        System.Threading.CancellationToken cancelToken = new System.Threading.CancellationToken();
-
-                        var connectionSuccess = qTrade.MakeConnection((Questrade.streamType)(selection - 1), port, cancelToken).Result;
-
-                        if (connectionSuccess)
-                        {
-                            Console.WriteLine("Successfully connecting to streaming service");
-                        }
-                        else
-                        {
-                            Console.WriteLine("Connection Unsucessful");
-                        }
-
+                        Task.Run(() => qTrade.SubToOrderNotif(WebsocketMsgWrapperCallback));
+                        printLine("Connecting...");
                         break;
                 }
                 Console.WriteLine();
@@ -260,6 +217,7 @@ namespace QuestradeCmd
             
             
         }
+
 
         
     }
