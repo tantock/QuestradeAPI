@@ -21,6 +21,7 @@ namespace QuestradeAPI
         public int expires_in { get; set; }
         public string refresh_token { get; set; }
         public string token_type { get; set; }
+        public DateTime expires_in_date { get; set; }
     }
 
     public class Candle
@@ -89,51 +90,46 @@ namespace QuestradeAPI
 
     public class Questrade
     {
-        private string _token;
-        private string _accessToken = "";
         static HttpClient authClient = new HttpClient();
         static HttpClient apiClient = new HttpClient();
-        static WebSocketSharp.WebSocket notificationClient;
-        private AuthenticateResp _auth = null;
+        public static WebSocketSharp.WebSocket notificationClient;
+        public static WebSocketSharp.WebSocket quoteStreamClient;
+        private AuthenticateResp _auth;
 
         public enum HistoricalGrandularity { OneMinute,TwoMinutes, ThreeMinutes, FourMinutes, FiveMinutes, TenMinutes, FifteenMinutes, TwentyMinutes, HalfHour,OneHour,TwoHour,FourHour,OneDay,OneWeek,OneMonth,OneYear }
         public Questrade() { }
 
         public Questrade(string token)
         {
-            _token = token;
+            _auth = new AuthenticateResp();
+            _auth.refresh_token = token;
+
+            
+
         }
 
-        public async Task<System.Net.HttpStatusCode> Authenticate(Action<string> authenticateCallback)
+        public async Task<System.Net.HttpStatusCode> Authenticate(Action<string> preAuthenticateCallback, Action<DateTime> accessTokenExpiryCallback)
         {
-            if(_auth == null)
+            HttpResponseMessage resp = null;
+
+            preAuthenticateCallback("Authenticating...");
+
+            resp = await authClient.GetAsync(string.Format("https://login.questrade.com/oauth2/token?grant_type=refresh_token&refresh_token={0}", _auth.refresh_token));
+
+            if (resp.IsSuccessStatusCode)
             {
-                HttpResponseMessage resp = null;
+                var dateTimeNow = DateTime.Now;
+                _auth = JsonConvert.DeserializeObject<AuthenticateResp>(resp.Content.ReadAsStringAsync().Result);
+                _auth.expires_in_date = dateTimeNow.AddSeconds(_auth.expires_in);
+                apiClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", string.Format("{0} {1}", _auth.token_type, _auth.access_token));
+                apiClient.BaseAddress = new Uri(_auth.api_server);
+                accessTokenExpiryCallback(_auth.expires_in_date);
 
-                authenticateCallback("Authenticating...");
-
-                resp = await authClient.GetAsync(string.Format("https://login.questrade.com/oauth2/token?grant_type=refresh_token&refresh_token={0}", _token));
-
-                if (resp.IsSuccessStatusCode)
-                {
-                    var authObj = new AuthenticateResp();
-                    _auth = JsonConvert.DeserializeObject<AuthenticateResp>(resp.Content.ReadAsStringAsync().Result);
-                    apiClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", string.Format("{0} {1}", _auth.token_type, _auth.access_token));
-                    //streamClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", string.Format("{0}", _auth.access_token));
-                    apiClient.BaseAddress = new Uri(_auth.api_server);
-                    //streamClient.BaseAddress = new Uri(_auth.api_server);
-                    return resp.StatusCode;
-                }
-                else
-                {
-                    return resp.StatusCode;
-                }
-
-
+                return resp.StatusCode;
             }
             else
             {
-                throw new ArgumentException(string.Format("_accessToken: {0}", _accessToken));
+                return resp.StatusCode;
             }
         }
 
@@ -175,21 +171,22 @@ namespace QuestradeAPI
                 throw new HttpRequestException(resp.StatusCode.ToString());
             }
         }
+        
+        #region Streaming methods
+        public enum streamType { RawSocket, WebSocket }
 
-        public enum streamType { RawSocket,WebSocket}
-
-        Action<string> OnMessageWrapper;
+        Action<string, DateTime> SubToOrderNotif_Callback;
 
         /// <summary>
-        /// This method calls the OnMessageWrapper method
+        /// This method calls the SubToOrderNotif_Callback method
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        public void MakeConnection_OnMessage(object sender, WebSocketSharp.MessageEventArgs e)
+        public void SubToOrderNotift_OnMessage(object sender, WebSocketSharp.MessageEventArgs e)
         {
             if (e.IsText)
             {
-                OnMessageWrapper(e.Data);
+                SubToOrderNotif_Callback(e.Data, DateTime.Now);
             }
             if (e.IsBinary)
             {
@@ -197,23 +194,48 @@ namespace QuestradeAPI
             }
         }
 
-        public async Task<bool> SubToOrderNotif(Action<string> OnMessageCallback)
+        Action<string, DateTime> StreamQuote_Callback;
+
+        /// <summary>
+        /// This method calls the StreamQuote_Callback method
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        public void StreamQuote_OnMessage(object sender, WebSocketSharp.MessageEventArgs e)
+        {
+            if (e.IsText)
+            {
+                StreamQuote_Callback(e.Data, DateTime.Now);
+            }
+            if (e.IsBinary)
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        /// <summary>
+        /// Sends a request to Questrade to push notifcations to this Websocket client. Data is recieved through the OnMessageCallback.
+        /// </summary>
+        /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
+        /// <returns></returns>
+        public async Task<bool> SubToOrderNotif(Action<string, DateTime> OnMessageCallback)
         {
 
-            var resp = await apiClient.GetAsync(string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));
+            var resp = await apiClient.GetAsync(string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));//Requests server to send notification to port
 
             if (resp.IsSuccessStatusCode)
             {
                 var result = resp.Content.ReadAsStringAsync().Result;
-                var port = JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result);
+                var port = JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result); //Gets what port to connect to
 
 
                 var api_base = new Uri(_auth.api_server);
-                var streamUrl = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, port.streamPort));
-                OnMessageWrapper = OnMessageCallback;
+                SubToOrderNotif_Callback = OnMessageCallback;
 
-                notificationClient = new WebSocketSharp.WebSocket(streamUrl.OriginalString);
-                notificationClient.OnMessage += MakeConnection_OnMessage;
+                notificationClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, port.streamPort));
+
+
+                notificationClient.OnMessage += SubToOrderNotift_OnMessage;
 
                 notificationClient.Connect();
 
@@ -225,7 +247,44 @@ namespace QuestradeAPI
             {
                 throw new HttpRequestException(resp.StatusCode.ToString());
             }
-            
+
         }
+
+        /// <summary>
+        /// Sends a request to Questrade to push quote data to this Websocket client. Data is recieved through the OnMessageCallback.
+        /// </summary>
+        /// <param name="ids">Comma seperated symbol id</param>
+        /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
+        /// <returns></returns>
+        public async Task<bool> StreamQuote(string ids, Action<string, DateTime> OnMessageCallback)
+        {
+            var resp = await apiClient.GetAsync(string.Format("v1/markets/quotes?ids={0}&stream=true&mode={1}", ids, streamType.WebSocket.ToString()));//Requests server to send notification to port
+            if (resp.IsSuccessStatusCode)
+            {
+                //Setup Websocket to recieve data from
+                var result = resp.Content.ReadAsStringAsync().Result;
+                var port = JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result);//Gets what port to connect to
+
+
+                var api_base = new Uri(_auth.api_server);
+                StreamQuote_Callback = OnMessageCallback;
+
+                quoteStreamClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, port.streamPort));
+
+                quoteStreamClient.OnMessage += StreamQuote_OnMessage;
+
+                quoteStreamClient.Connect();
+
+                quoteStreamClient.Send(_auth.access_token);
+
+                return true;
+            }
+            else
+            {
+                throw new HttpRequestException(resp.StatusCode.ToString());
+            }
+        }
+        #endregion
+
     }
 }

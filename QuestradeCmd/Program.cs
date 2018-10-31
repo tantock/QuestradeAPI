@@ -14,9 +14,19 @@ namespace QuestradeCmd
             Console.WriteLine(message);
         }
 
-        private static void WebsocketMsgWrapperCallback(string message)
+        private static void WebsocketMsgWrapperCallback(string message, DateTime messageTime)
         {
             Console.WriteLine(message);
+        }
+
+        private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
+        {
+            Console.WriteLine(message);
+        }
+
+        private static void printAccessToken(DateTime expiry)
+        {
+            Console.WriteLine(string.Format("Access token will expire on: {0} {1}", expiry.ToLongDateString(), expiry.ToLongTimeString()));
         }
 
         static void Main(string[] args)
@@ -41,7 +51,7 @@ namespace QuestradeCmd
                     try
                     {
 
-                        authStatusCode = qTrade.Authenticate(printLine).Result;
+                        authStatusCode = qTrade.Authenticate(printLine, printAccessToken).Result;
 
 
                         switch (authStatusCode)
@@ -82,6 +92,8 @@ namespace QuestradeCmd
                 Console.WriteLine("1. Retrieve and print candlestick data");
                 Console.WriteLine("2. Query by name");
                 Console.WriteLine("3. Subscribe to order notifications");
+                Console.WriteLine("4. Connect to quote stream");
+                Console.WriteLine("5. Disconnect from quote stream");
                 Console.WriteLine("0. Exit");
                 menuEntry = Console.ReadLine();
                 Console.WriteLine();
@@ -208,8 +220,17 @@ namespace QuestradeCmd
                         }
                         break;
                     case "3":
-                        Task.Run(() => qTrade.SubToOrderNotif(WebsocketMsgWrapperCallback));
+                        Task.Run(() => qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback));
                         printLine("Connecting...");
+                        break;
+                    case "4":
+                        Console.WriteLine("Please enter the symbol ID: ");
+                        consoleEntry = Console.ReadLine();
+                        Task.Run(() => qTrade.StreamQuote(consoleEntry, WebsocketMsgWrapperCallback));
+                        printLine("Connecting...");
+                        break;
+                    case "5":
+                        Questrade.quoteStreamClient.Close();
                         break;
                 }
                 Console.WriteLine();

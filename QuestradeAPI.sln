@@ -5,7 +5,7 @@ VisualStudioVersion = 15.0.28010.2036
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QuestradeAPI", "QuestradeAPI\QuestradeAPI.csproj", "{5135CBED-D630-40E0-B632-D93EA17413AA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuestradeCmd", "QuestradeCmd\QuestradeCmd.csproj", "{A566EB18-246A-4F40-8D1C-6647AF52416B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QuestradeCmdTest", "QuestradeCmd\QuestradeCmdTest.csproj", "{A566EB18-246A-4F40-8D1C-6647AF52416B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
