@@ -9,103 +9,22 @@ using WebSocketSharp.Net;
 
 namespace QuestradeAPI
 {
-    public class StreamPort
-    {
-        public int streamPort { get; set; }
-    }
-
-    public class AuthenticateResp
-    {
-        public string access_token { get; set; }
-        public string api_server { get; set; }
-        public int expires_in { get; set; }
-        public string refresh_token { get; set; }
-        public string token_type { get; set; }
-        public DateTime expires_in_date { get; set; }
-    }
-
-    public class Candle
-    {
-        public DateTime start { get; set; }
-        public DateTime end { get; set; }
-        public double open { get; set; }
-        public double high { get; set; }
-        public double low { get; set; }
-        public double close { get; set; }
-        public int volume { get; set; }
-        public double VWAP { get; set; }
-    }
-
-    public class Quote
-    {
-        public int symbol { get; set; }
-        public string symbolId { get; set; }
-        public string tier { get; set; } //TODO change to enum
-        public double bidPrice { get; set; }
-        public int bidSize { get; set; }
-        public double askPrice { get; set; }
-        public int askSize { get; set; }
-        public double lastTradeTrHrs { get; set; }
-        public double lastTradePrice { get; set; }
-        public int lastTradeSize { get; set; }
-        public string lastTradeTick { get; set; } //TODO change to enum
-        public int volume { get; set; }
-        public double openPrice { get; set; }
-        public double highPrice { get; set; }
-        public double lowPrice { get; set; }
-        public bool delay { get; set; }
-        public bool isHalted { get; set; }
-    }
-
-    public class Quotes
-    {
-        Quote[] quotes { get; set; }
-    }
-
-    public class Candles
-    {
-        public Candle[] candles { get; set; }
-    }
-
-    public enum SecurityType { Stock,Option,Bond,Right,Gold,MutualFund,Index}
-
-    public enum ListingExch { TSX,TSXV, CNSX, MX, NASDAQ, NYSE, ARCA, OPRA, PINX, OTCBB}
-
-    public class Symbol
-    {
-        public string symbol { get; set; }
-        public int symbolId { get; set; }
-        public string description { get; set; }
-        public SecurityType securityType { get; set; }
-        public string listingExchange { get; set; }
-        public bool isQuotable { get; set; }
-        public bool isTradable { get; set; }
-        public string currency { get; set; }
-    }
-
-    public class Symbols
-    {
-        public Symbol[] symbols;
-    }
 
     public class Questrade
     {
-        static HttpClient authClient = new HttpClient();
-        static HttpClient apiClient = new HttpClient();
+        static HttpClient authClient;
+        static HttpClient apiClient;
         public static WebSocketSharp.WebSocket notificationClient;
         public static WebSocketSharp.WebSocket quoteStreamClient;
         private AuthenticateResp _auth;
 
         public enum HistoricalGrandularity { OneMinute,TwoMinutes, ThreeMinutes, FourMinutes, FiveMinutes, TenMinutes, FifteenMinutes, TwentyMinutes, HalfHour,OneHour,TwoHour,FourHour,OneDay,OneWeek,OneMonth,OneYear }
-        public Questrade() { }
 
         public Questrade(string token)
         {
             _auth = new AuthenticateResp();
             _auth.refresh_token = token;
-
-            
-
+            authClient = new HttpClient();
         }
 
         public async Task<System.Net.HttpStatusCode> Authenticate(Action<string> preAuthenticateCallback, Action<DateTime> accessTokenExpiryCallback)
@@ -121,6 +40,7 @@ namespace QuestradeAPI
                 var dateTimeNow = DateTime.Now;
                 _auth = JsonConvert.DeserializeObject<AuthenticateResp>(resp.Content.ReadAsStringAsync().Result);
                 _auth.expires_in_date = dateTimeNow.AddSeconds(_auth.expires_in);
+                apiClient = new HttpClient();
                 apiClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", string.Format("{0} {1}", _auth.token_type, _auth.access_token));
                 apiClient.BaseAddress = new Uri(_auth.api_server);
                 accessTokenExpiryCallback(_auth.expires_in_date);
@@ -171,7 +91,17 @@ namespace QuestradeAPI
                 throw new HttpRequestException(resp.StatusCode.ToString());
             }
         }
-        
+
+        /// <summary>
+        /// Deserializes JSON response and returns a Quotes object
+        /// </summary>
+        /// <param name="json">JSON response</param>
+        /// <returns></returns>
+        public static Quotes JsonToQuotes(string json)
+        {
+            return JsonConvert.DeserializeObject<Quotes>(json);
+        }
+
         #region Streaming methods
         public enum streamType { RawSocket, WebSocket }
 

@@ -14,19 +14,55 @@ namespace QuestradeCmd
             Console.WriteLine(message);
         }
 
-        private static void WebsocketMsgWrapperCallback(string message, DateTime messageTime)
+        private static void WebsocketQuoteMsgWrapperCallback(string message, DateTime messageTime)
         {
-            Console.WriteLine(message);
+            Console.WriteLine(messageTime.ToShortTimeString() + message);
         }
 
         private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
         {
-            Console.WriteLine(message);
+            Console.WriteLine(messageTime.ToShortTimeString() + message);
         }
 
         private static void printAccessToken(DateTime expiry)
         {
             Console.WriteLine(string.Format("Access token will expire on: {0} {1}", expiry.ToLongDateString(), expiry.ToLongTimeString()));
+        }
+
+        private static bool authenticate(ref Questrade client)
+        {
+            try
+            {
+
+                HttpStatusCode authStatusCode;
+                authStatusCode = client.Authenticate(printLine, printAccessToken).Result;
+
+
+                switch (authStatusCode)
+                {
+                    case HttpStatusCode.OK:
+                        return true;
+                    case System.Net.HttpStatusCode.BadRequest:
+                        Console.WriteLine("Invalid Token");
+                        break;
+                    /*case System.Net.HttpStatusCode.NotFound:
+                        Console.WriteLine("404 not found.");
+                        break;
+                    case System.Net.HttpStatusCode.TooManyRequests:
+                        Console.WriteLine("Too many requests.");
+                        break;*/
+                    default:
+                        Console.WriteLine(authStatusCode.ToString());
+                        break;
+
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                return false;   
+            }
+            return false;
         }
 
         static void Main(string[] args)
@@ -36,7 +72,6 @@ namespace QuestradeCmd
             string consoleEntry = "";
             string menuEntry = "";
             Questrade qTrade = null;
-            HttpStatusCode authStatusCode;
             bool isAuthenticated = false;
 
             #region Initial Authentication
@@ -48,36 +83,7 @@ namespace QuestradeCmd
                 {
                     initialToken = consoleEntry;
                     qTrade = new Questrade(initialToken);
-                    try
-                    {
-
-                        authStatusCode = qTrade.Authenticate(printLine, printAccessToken).Result;
-
-
-                        switch (authStatusCode)
-                        {
-                            case HttpStatusCode.OK:
-                                isAuthenticated = true;
-                                break;
-                            case System.Net.HttpStatusCode.BadRequest:
-                                Console.WriteLine("Invalid Token");
-                                break;
-                            case System.Net.HttpStatusCode.NotFound:
-                                Console.WriteLine("404 not found.");
-                                break;
-                            case System.Net.HttpStatusCode.TooManyRequests:
-                                Console.WriteLine("Too many requests.");
-                                break;
-                            default:
-                                Console.WriteLine(authStatusCode);
-                                break;
-
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(ex.Message);
-                    }
+                    isAuthenticated = authenticate(ref qTrade);
                 }
                 else
                 {
@@ -94,6 +100,7 @@ namespace QuestradeCmd
                 Console.WriteLine("3. Subscribe to order notifications");
                 Console.WriteLine("4. Connect to quote stream");
                 Console.WriteLine("5. Disconnect from quote stream");
+                Console.WriteLine("6. Reauthenticate");
                 Console.WriteLine("0. Exit");
                 menuEntry = Console.ReadLine();
                 Console.WriteLine();
@@ -226,11 +233,23 @@ namespace QuestradeCmd
                     case "4":
                         Console.WriteLine("Please enter the symbol ID: ");
                         consoleEntry = Console.ReadLine();
-                        Task.Run(() => qTrade.StreamQuote(consoleEntry, WebsocketMsgWrapperCallback));
+                        Task.Run(() => qTrade.StreamQuote(consoleEntry, WebsocketQuoteMsgWrapperCallback));
                         printLine("Connecting...");
                         break;
                     case "5":
                         Questrade.quoteStreamClient.Close();
+                        break;
+                    case "6":
+                        var isSuccess = authenticate(ref qTrade);
+
+                        if (isSuccess)
+                        {
+                            Console.WriteLine("Successully reauthenticated.");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Reauthentication unsuccessful.");
+                        }
                         break;
                 }
                 Console.WriteLine();
