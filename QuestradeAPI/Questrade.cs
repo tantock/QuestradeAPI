@@ -17,8 +17,7 @@ namespace QuestradeAPI
         public static WebSocketSharp.WebSocket notificationClient;
         public static WebSocketSharp.WebSocket quoteStreamClient;
         private AuthenticateResp _auth;
-
-        public enum HistoricalGrandularity { OneMinute,TwoMinutes, ThreeMinutes, FourMinutes, FiveMinutes, TenMinutes, FifteenMinutes, TwentyMinutes, HalfHour,OneHour,TwoHour,FourHour,OneDay,OneWeek,OneMonth,OneYear }
+        
 
         public Questrade(string token)
         {
@@ -27,7 +26,7 @@ namespace QuestradeAPI
             authClient = new HttpClient();
         }
 
-        public async Task<System.Net.HttpStatusCode> Authenticate(Action<string> preAuthenticateCallback, Action<DateTime> accessTokenExpiryCallback)
+        public async Task<HttpResponseMessage> Authenticate(Action<string> preAuthenticateCallback, Action<DateTime> accessTokenExpiryCallback)
         {
             HttpResponseMessage resp = null;
 
@@ -45,11 +44,11 @@ namespace QuestradeAPI
                 apiClient.BaseAddress = new Uri(_auth.api_server);
                 accessTokenExpiryCallback(_auth.expires_in_date);
 
-                return resp.StatusCode;
+                return resp;
             }
             else
             {
-                return resp.StatusCode;
+                return resp;
             }
         }
 
@@ -92,6 +91,38 @@ namespace QuestradeAPI
             }
         }
 
+
+        #region JSON deserializer
+        /// <summary>
+        /// Deserializes JSON response and returns a Order Error object
+        /// </summary>
+        /// <param name="json">JSON response</param>
+        /// <returns></returns>
+        public static OrderProcesssingErrorResp JsonToOrderProcessingErrorResp(string json)
+        {
+            return JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(json);
+        }
+
+        /// <summary>
+        /// Deserializes JSON response and returns a General Error object
+        /// </summary>
+        /// <param name="json">JSON response</param>
+        /// <returns></returns>
+        public static GeneralErrorResp JsonToGeneralErrorResp(string json)
+        {
+            return JsonConvert.DeserializeObject<GeneralErrorResp>(json);
+        }
+
+        /// <summary>
+        /// Deserializes JSON response and returns a Orders object
+        /// </summary>
+        /// <param name="json">JSON response</param>
+        /// <returns></returns>
+        public static Orders JsonToOrders(string json)
+        {
+            return JsonConvert.DeserializeObject<Orders>(json);
+        }
+
         /// <summary>
         /// Deserializes JSON response and returns a Quotes object
         /// </summary>
@@ -101,6 +132,39 @@ namespace QuestradeAPI
         {
             return JsonConvert.DeserializeObject<Quotes>(json);
         }
+
+        /// <summary>
+        /// Deserializes JSON response and returns a Execution object
+        /// </summary>
+        /// <param name="json">JSON response</param>
+        /// <returns></returns>
+        public static Executions JsonToExecution(string json)
+        {
+            return JsonConvert.DeserializeObject<Executions>(json);
+        }
+
+        /// <summary>
+        /// Deserializes JSON response and returns a Execution notification object
+        /// </summary>
+        /// <param name="json">JSON response</param>
+        /// <returns></returns>
+        public static ExecutionNotification JsonToExecutionNotif(string json)
+        {
+            return JsonConvert.DeserializeObject<ExecutionNotification>(json);
+        }
+
+        /// <summary>
+        /// Deserializes JSON response and returns a Execution notification object
+        /// </summary>
+        /// <param name="json">JSON response</param>
+        /// <returns></returns>
+        public static OrderNotification JsonToOrderNotif(string json)
+        {
+            return JsonConvert.DeserializeObject<OrderNotification>(json);
+        }
+
+        #endregion
+
 
         #region Streaming methods
         public enum streamType { RawSocket, WebSocket }

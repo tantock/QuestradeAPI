@@ -21,7 +21,17 @@ namespace QuestradeCmd
 
         private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
         {
-            Console.WriteLine(messageTime.ToShortTimeString() + message);
+            //Console.WriteLine(messageTime.ToShortTimeString() + message);
+            Debug.WriteLine(message);//TODO remove debug line
+
+            if (message.Contains("executions"))
+            {
+                var executionNotif = Questrade.JsonToExecutionNotif(message);
+            }
+            else if(!message.Contains("success"))
+            {
+                var orderNotif = Questrade.JsonToOrderNotif(message);
+            }
         }
 
         private static void printAccessToken(DateTime expiry)
@@ -35,9 +45,8 @@ namespace QuestradeCmd
             {
 
                 HttpStatusCode authStatusCode;
-                authStatusCode = client.Authenticate(printLine, printAccessToken).Result;
-
-
+                var resp = client.Authenticate(printLine, printAccessToken).Result;
+                authStatusCode = resp.StatusCode;
                 switch (authStatusCode)
                 {
                     case HttpStatusCode.OK:
@@ -45,12 +54,12 @@ namespace QuestradeCmd
                     case System.Net.HttpStatusCode.BadRequest:
                         Console.WriteLine("Invalid Token");
                         break;
-                    /*case System.Net.HttpStatusCode.NotFound:
+                    case System.Net.HttpStatusCode.NotFound:
                         Console.WriteLine("404 not found.");
                         break;
                     case System.Net.HttpStatusCode.TooManyRequests:
                         Console.WriteLine("Too many requests.");
-                        break;*/
+                        break;
                     default:
                         Console.WriteLine(authStatusCode.ToString());
                         break;
@@ -176,7 +185,7 @@ namespace QuestradeCmd
                                         {
                                             for (int i = 0; i < 15; i++)
                                             {
-                                                Console.WriteLine(string.Format("{0}. {1}", i + 1, ((Questrade.HistoricalGrandularity)i).ToString()));
+                                                Console.WriteLine(string.Format("{0}. {1}", i + 1, ((QuestradeAPI.HistoricalGrandularity)i).ToString()));
                                             }
                                             consoleEntry = Console.ReadLine();
 
@@ -189,7 +198,7 @@ namespace QuestradeCmd
                                             {
                                                 candleGranularity -= 1;
 
-                                                var candleReq = qTrade.GetCandles(idStr, start, end, (Questrade.HistoricalGrandularity)candleGranularity).Result;
+                                                var candleReq = qTrade.GetCandles(idStr, start, end, (QuestradeAPI.HistoricalGrandularity)candleGranularity).Result;
 
                                                 Console.WriteLine("\nOpen\tHigh\tLow\tClose\tVolume\n--------------------------------------------------------------");
                                                 for (int i = 0; i < candleReq.candles.Length; i++)
