@@ -2,8 +2,6 @@
 
 namespace QuestradeAPI
 {
-    #region Streaming
-
     public class StreamPort
     {
         public int streamPort { get; set; }
@@ -18,8 +16,6 @@ namespace QuestradeAPI
         public string token_type { get; set; }
         public DateTime expires_in_date { get; set; }
     }
-
-    #endregion
 
 
     #region Market Data
@@ -39,8 +35,8 @@ namespace QuestradeAPI
 
     public class Quote
     {
-        public int symbol { get; set; }
-        public string symbolId { get; set; }
+        public string symbol { get; set; }
+        public int symbolId { get; set; }
         public string tier { get; set; } //TODO change to enum
         public double bidPrice { get; set; }
         public int bidSize { get; set; }
@@ -49,7 +45,7 @@ namespace QuestradeAPI
         public double lastTradeTrHrs { get; set; }
         public double lastTradePrice { get; set; }
         public int lastTradeSize { get; set; }
-        public string lastTradeTick { get; set; } //TODO change to enum
+        public TickType lastTradeTick { get; set; }
         public int volume { get; set; }
         public double openPrice { get; set; }
         public double highPrice { get; set; }
@@ -60,7 +56,7 @@ namespace QuestradeAPI
 
     public class Quotes
     {
-        Quote[] quotes { get; set; }
+        public Quote[] quotes { get; set; }
     }
 
     public class Candles
@@ -120,24 +116,20 @@ namespace QuestradeAPI
         public double? placementCommission { get; set; }
         public double? triggerStopPrice { get; set; }
         public int orderGroupId { get; set; }
+        public OrderSide side { get; set; }
+        public OrderType orderType { get; set; }
+        public string source { get; set; }
+        public OrderTimeInForce timeInForce { get; set; }
+        public OrderState state { get; set; }
+        public string primaryRoute { get; set; }
+        public string secondaryRoute { get; set; }
+        public string orderRoute { get; set; }
+        public string venueHoldingOrder { get; set; }
+        //public Complex legs{get;set;}-public Complex OrderLeg{get;set;}
+        //public Enumeration strategyType{get;set;}
+        public OrderClass? orderClass { get; set; }
 
         //TODO Implement Enum
-        /*
-         public Enumeration side{get;set;}
-public Enumeration orderType{get;set;}
-public Enumeration source{get;set;}
-public Enumeration timeInForce{get;set;}
-public Enumeration state{get;set;}
-public Enumeration primaryRoute{get;set;}
-public Enumeration secondaryRoute{get;set;}
-public Enumeration orderRoute{get;set;}
-public Enumeration venueHoldingOrder{get;set;}
-public Complex legs{get;set;}
-public Complex OrderLeg{get;set;}
-public Enumeration strategyType{get;set;}
-public Enumeration? orderClass{get;set;}
-
-         */
     }
 
     public class Orders
@@ -223,5 +215,17 @@ public Enumeration? orderClass{get;set;}
     public enum AccountType { Cash, Margin, TFSA, RRSP, SRRSP, LRRSP, LIRA, LIF, RIF, SRIF, LRIF, RRIF, PRIF, RESP, FRESP }
     
     public enum TickType { Up,Down,Equal}
+
+    public enum OrderType { Limit, Stop, StopLimit,TrailStopInPercentage, TrailStopInDollar, TrailStopLimitInPercentage, TrailStopLimitInDollar, LimitOnOpen, LimitOnClose }
+
+    public enum OrderTimeInForce { Day, GoodTillCanceled, GoodTillExtendedDay, GoodTillDate, ImmediateOrCancel, FillOrKill }
+
+    public enum OrderAction { Buy, Sell}
+
+    public enum OrderClass { Primary,Limit,StopLoss}
+
+    public enum OrderSide { Buy, Sell, Short, Cov, BTO, STC, BTC}
+
+    public enum OrderState {Failed, Pending, Accepted, Rejected, CancelPending, Canceled, PartialCanceled, Partial, Executed, ReplacePending, Replaced, Stopped, Suspended, Expired, Queued, Triggered, Activated, PendingRiskReview, ContingentOrder}
     #endregion
 }

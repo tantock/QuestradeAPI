@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
-
+using System.Collections.Generic;
 namespace QuestradeCmd
 {
     class Program
@@ -16,12 +16,20 @@ namespace QuestradeCmd
 
         private static void WebsocketQuoteMsgWrapperCallback(string message, DateTime messageTime)
         {
-            Console.WriteLine(messageTime.ToShortTimeString() + message);
+            if (!message.Contains("success"))
+            {
+                var quoteResp = Questrade.JsonToQuotes(message);
+                for(int i = 0; i < quoteResp.quotes.Length; i++)
+                {
+                    Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
+                    messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
+                }
+                
+            }
         }
 
         private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
         {
-            //Console.WriteLine(messageTime.ToShortTimeString() + message);
             Debug.WriteLine(message);//TODO remove debug line
 
             if (message.Contains("executions"))
@@ -74,6 +82,41 @@ namespace QuestradeCmd
             return false;
         }
 
+        private static bool CodeToToken(ref Questrade client, string clientId, string code, string redirectUrl)
+        {
+            try
+            {
+
+                HttpStatusCode authStatusCode;
+                var resp = client.CodeToAccessToken(clientId, redirectUrl, code, printLine, printAccessToken).Result;
+                authStatusCode = resp.StatusCode;
+                switch (authStatusCode)
+                {
+                    case HttpStatusCode.OK:
+                        return true;
+                    case System.Net.HttpStatusCode.BadRequest:
+                        Console.WriteLine("Invalid Token");
+                        break;
+                    case System.Net.HttpStatusCode.NotFound:
+                        Console.WriteLine("404 not found.");
+                        break;
+                    case System.Net.HttpStatusCode.TooManyRequests:
+                        Console.WriteLine("Too many requests.");
+                        break;
+                    default:
+                        Console.WriteLine(authStatusCode.ToString());
+                        break;
+
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                return false;
+            }
+            return false;
+        }
+
         static void Main(string[] args)
         {
             
@@ -110,9 +153,14 @@ namespace QuestradeCmd
                 Console.WriteLine("4. Connect to quote stream");
                 Console.WriteLine("5. Disconnect from quote stream");
                 Console.WriteLine("6. Reauthenticate");
+                Console.WriteLine("7. Retrive Accounts");
+                Console.WriteLine("8. Account Info");
                 Console.WriteLine("0. Exit");
                 menuEntry = Console.ReadLine();
                 Console.WriteLine();
+                bool correctFormat = false;
+                int symbolId;
+                int accNum;
                 switch (menuEntry)
                 {
 
@@ -122,7 +170,6 @@ namespace QuestradeCmd
                         DateTime end = new DateTime();
                         Console.Write("Start date(yyyy/MM/dd): ");
                         consoleEntry = Console.ReadLine();
-                        bool correctFormat = false;
                         do
                         {
                             if (consoleEntry != "0")
@@ -158,21 +205,20 @@ namespace QuestradeCmd
                         if (correctFormat)
                         {
                             Console.Write("Enter ticker ID number: ");
-                            int id;
-                            string idStr;
                             correctFormat = false;
+                            string idStr;
                             do
                             {
                                 consoleEntry = Console.ReadLine();
                                 if (consoleEntry != "0")
                                 {
-                                    correctFormat = int.TryParse(consoleEntry, out id);
+                                    correctFormat = int.TryParse(consoleEntry, out symbolId);
                                     if (!correctFormat)
                                     {
                                         Console.Write("Incorrect format entered. Please try again. To exit, enter 0: ");
                                         consoleEntry = Console.ReadLine();
 
-                                        correctFormat = int.TryParse(consoleEntry, out id);
+                                        correctFormat = int.TryParse(consoleEntry, out symbolId);
                                     }
                                     if (correctFormat)
                                     {
@@ -228,12 +274,59 @@ namespace QuestradeCmd
                     case "2":
                         Console.Write("Please enter a search query: ");
                         consoleEntry = Console.ReadLine();
-                        var result = qTrade.symbolSearch(consoleEntry).Result;
-                        Console.WriteLine(string.Format("\n{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}\n--------------------------------------------------------------", "Symbol", "Symbol ID", "Exchange", "Description"));
-                        for (int i = 0; i < result.symbols.Length; i++)
+                        int numQueries;
+                        Console.Write("Number of queries to return: ");
+                        correctFormat = int.TryParse(Console.ReadLine(), out numQueries);
+                        List<Symbols> resultList = new List<Symbols>();
+                        int offset;
+                        for(int i = 0; i < numQueries; i++)
                         {
-                            Console.WriteLine(string.Format("{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}", result.symbols[i].symbol, result.symbols[i].symbolId, result.symbols[i].listingExchange, result.symbols[i].description));
+                            offset = i * 20;
+                            resultList.Add(qTrade.symbolSearch(consoleEntry, offset).Result);
                         }
+                        Console.WriteLine(string.Format("\n{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}\n--------------------------------------------------------------", "Symbol", "Symbol ID", "Exchange", "Description"));
+                        List<string> outputList = new List<string>();
+                        int count = 0;
+                        for(int j = 0; j < numQueries; j++)
+                        {
+                            for (int i = 0; i < resultList[j].symbols.Length; i++)
+                            {
+                                
+                                outputList.Add(string.Format("{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}", resultList[j].symbols[i].symbol, resultList[j].symbols[i].symbolId, resultList[j].symbols[i].listingExchange, resultList[j].symbols[i].description));
+                                Console.WriteLine(outputList[count]);
+                                count++;
+                            }
+                        }
+                        Console.Write("Do you want to save to file? (y or n): ");
+                        char c = (char)Console.Read();
+                        if(c == 'y' || c == 'Y')
+                        {
+                            Console.Write("Enter file name/path: ");
+                            consoleEntry = Console.ReadLine();
+                            while(consoleEntry == "")
+                            {
+                                consoleEntry = Console.ReadLine();
+                            }
+                            try
+                            {
+                                using (System.IO.StreamWriter file = new System.IO.StreamWriter(consoleEntry, true))
+                                {
+                                    for (int i = 0; i < outputList.Count; i++)
+                                    {
+                                        file.WriteLine(outputList[i]);
+                                    }
+                                    Console.WriteLine("File written successfully to: {0}", System.IO.Directory.GetCurrentDirectory());
+                                }
+                                
+                            }
+                            catch(Exception ex)
+                            {
+                                Console.WriteLine(ex.Message);
+                            }
+                            
+                        }
+                        
+                        
                         break;
                     case "3":
                         Task.Run(() => qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback));
@@ -259,6 +352,30 @@ namespace QuestradeCmd
                         {
                             Console.WriteLine("Reauthentication unsuccessful.");
                         }
+                        break;
+                    case "7":
+                        var AccountList = Task.Run(() => qTrade.GetAccounts()).Result;
+
+                        for(int i = 0; i < AccountList.accounts.Length; i++)
+                        {
+                            Console.WriteLine(string.Format("{0} {1} : {2}"
+                                ,AccountList.accounts[i].clientAccountType, AccountList.accounts[i].type, AccountList.accounts[i].number));
+
+                        }
+                        break;
+                    case "8":
+                        Console.Write("Enter the account number: ");
+                        consoleEntry = Console.ReadLine();
+                        correctFormat = int.TryParse(consoleEntry, out accNum);
+                        while (!correctFormat && consoleEntry != "0")
+                        {
+                            Console.Write("Invalid entry. Please try again.");
+                            consoleEntry = Console.ReadLine();
+                            correctFormat = int.TryParse(consoleEntry, out accNum);
+                        }
+
+                        var AccountInfo = Task.Run(() => qTrade.GetAccountBalance(accNum.ToString()));
+
                         break;
                 }
                 Console.WriteLine();
