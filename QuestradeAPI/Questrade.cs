@@ -13,7 +13,6 @@ namespace QuestradeAPI
         public static WebSocketSharp.WebSocket notificationClient;
         public static WebSocketSharp.WebSocket quoteStreamClient;
         
-
         private AuthenticateResp _auth;
         
         /// <summary>
@@ -106,7 +105,13 @@ namespace QuestradeAPI
         #endregion
 
         #region Get Methods
-
+        /// <summary>
+        /// Method used to make a GET call to Questrade API
+        /// </summary>
+        /// <typeparam name="T">Return type</typeparam>
+        /// <param name="client">Authenticated http client</param>
+        /// <param name="requestUri">Request URIm</param>
+        /// <returns></returns>
         private async Task<APIReturn<T>> ApiGet<T>(HttpClient client,string requestUri)
         {
             APIReturn<T> apiReturn = new APIReturn<T>();
@@ -131,7 +136,7 @@ namespace QuestradeAPI
                 apiReturn.NumCallsLeft = numAPICallsRemain;
             }
 
-            //Error handle
+            //Error parse
             string respStr = await resp.Content.ReadAsStringAsync();
 
             if (respStr.Contains("message"))
@@ -140,10 +145,12 @@ namespace QuestradeAPI
                 if (resp.IsSuccessStatusCode)
                 {
                     apiReturn.orderError = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                    apiReturn.errorType = ErrorType.Order;
                 }
                 else
                 {
                     apiReturn.generalError = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                    apiReturn.errorType = ErrorType.General;
                 }
             }
             else
@@ -154,9 +161,7 @@ namespace QuestradeAPI
 
             return apiReturn;
         }
-
-
-
+        
         /// <summary>
         /// Retrives candlestick data between two dates given a symbol id
         /// </summary>
@@ -167,9 +172,8 @@ namespace QuestradeAPI
         /// <returns></returns>
         public async Task<APIReturn<Candles>> GetCandles(string id,DateTime start, DateTime end,HistoricalGrandularity gran)
         {
-            var resp = await ApiGet<Candles>(apiClient, string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}", id, DateTimeToString(start), DateTimeToString(end), gran.ToString()));
+            return await ApiGet<Candles>(apiClient, string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}", id, DateTimeToString(start), DateTimeToString(end), gran.ToString()));
 
-            return resp;
         }
 
         /// <summary>
@@ -178,22 +182,7 @@ namespace QuestradeAPI
         /// <returns></returns>
         public async Task<APIReturn<Accounts>> GetAccounts()
         {
-            var apiCall = await ApiGet(apiClient,"v1/accounts");//apiClient.GetAsync("v1/accounts");
-            APIReturn<Accounts> returnVal = new APIReturn<Accounts>();
-            string returnStr = apiCall.resp.Content.ReadAsStringAsync().Result;
-            if (apiCall.resp.IsSuccessStatusCode)
-            {
-                if(returnStr.Contains)
-                returnVal.q_obj = JsonConvert.DeserializeObject<Accounts>(returnStr);
-                returnVal.isSuccess = true;
-                return returnVal;
-            }
-            else
-            {
-                returnVal.isSuccess = false;
-
-                return returnVal;
-            }
+            return await ApiGet<Accounts>(apiClient,"v1/accounts");
         }
 
         /// <summary>
@@ -201,17 +190,10 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="id">Account number</param>
         /// <returns></returns>
-        public async Task<AccountBalances> GetAccountBalance(string id)
+        public async Task<APIReturn<AccountBalances>> GetAccountBalance(string id)
         {
-            var resp = await apiClient.GetAsync(string.Format("v1/accounts/{0}/balances", id));
-            if (resp.IsSuccessStatusCode)
-            {
-                return JsonConvert.DeserializeObject<AccountBalances>(resp.Content.ReadAsStringAsync().Result);
-            }
-            else
-            {
-                throw new HttpRequestException(resp.StatusCode.ToString());
-            }
+            return await ApiGet<AccountBalances>(apiClient, string.Format("v1/accounts/{0}/balances", id));//var resp = await apiClient.GetAsync(string.Format("v1/accounts/{0}/balances", id));
+            
         }
 
         /// <summary>
@@ -220,19 +202,10 @@ namespace QuestradeAPI
         /// <param name="query">Search query</param>
         /// <param name="offset">Starting offset on list</param>
         /// <returns></returns>
-        public async Task<Symbols> symbolSearch(string query, int offset = 0)
+        public async Task<APIReturn<Symbols>> symbolSearch(string query, int offset = 0)
         {
-            var resp = await apiClient.GetAsync(string.Format("v1/symbols/search?prefix={0}&offset={1}",query,offset));
-
-            if (resp.IsSuccessStatusCode)
-            {
-                var result = resp.Content.ReadAsStringAsync().Result;
-                return JsonConvert.DeserializeObject<Symbols>(resp.Content.ReadAsStringAsync().Result);
-            }
-            else
-            {
-                throw new HttpRequestException(resp.StatusCode.ToString());
-            }
+            return await ApiGet<Symbols>(apiClient, string.Format("v1/symbols/search?prefix={0}&offset={1}", query, offset)); //var resp = await apiClient.GetAsync(string.Format("v1/symbols/search?prefix={0}&offset={1}",query,offset));
+            
         }
 
         #endregion
@@ -362,21 +335,17 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
         /// <returns></returns>
-        public async Task<bool> SubToOrderNotif(Action<string, DateTime> OnMessageCallback)
+        public async Task<APIReturn<StreamPort>> SubToOrderNotif(Action<string, DateTime> OnMessageCallback)
         {
 
-            var resp = await apiClient.GetAsync(string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));//Requests server to send notification to port
+            var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));//Requests server to send notification to port
 
-            if (resp.IsSuccessStatusCode)
+            if (resp.isSuccess)
             {
-                var result = resp.Content.ReadAsStringAsync().Result;
-                var port = JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result); //Gets what port to connect to
-
-
                 var api_base = new Uri(_auth.api_server);
                 SubToOrderNotif_Callback = OnMessageCallback;
 
-                notificationClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, port.streamPort));
+                notificationClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
 
 
                 notificationClient.OnMessage += SubToOrderNotift_OnMessage;
@@ -384,14 +353,9 @@ namespace QuestradeAPI
                 notificationClient.Connect();
 
                 notificationClient.Send(_auth.access_token);
-
-                return true;
+                
             }
-            else
-            {
-                throw new HttpRequestException(resp.StatusCode.ToString());
-            }
-
+            return resp;
         }
 
         /// <summary>
@@ -400,33 +364,26 @@ namespace QuestradeAPI
         /// <param name="ids">Comma seperated symbol id</param>
         /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
         /// <returns></returns>
-        public async Task<bool> StreamQuote(string ids, Action<string, DateTime> OnMessageCallback)
+        public async Task<APIReturn<StreamPort>> StreamQuote(string ids, Action<string, DateTime> OnMessageCallback)
         {
-            var resp = await apiClient.GetAsync(string.Format("v1/markets/quotes?ids={0}&stream=true&mode={1}", ids, streamType.WebSocket.ToString()));//Requests server to send notification to port
-            if (resp.IsSuccessStatusCode)
+            var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/markets/quotes?ids={0}&stream=true&mode={1}", ids, streamType.WebSocket.ToString()));//Requests server to send notification to port
+
+            if (resp.isSuccess)
             {
                 //Setup Websocket to recieve data from
-                var result = resp.Content.ReadAsStringAsync().Result;
-                var port = JsonConvert.DeserializeObject<StreamPort>(resp.Content.ReadAsStringAsync().Result);//Gets what port to connect to
-
-
                 var api_base = new Uri(_auth.api_server);
                 StreamQuote_Callback = OnMessageCallback;
 
-                quoteStreamClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, port.streamPort));
+                quoteStreamClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
 
                 quoteStreamClient.OnMessage += StreamQuote_OnMessage;
 
                 quoteStreamClient.Connect();
 
                 quoteStreamClient.Send(_auth.access_token);
+            }
 
-                return true;
-            }
-            else
-            {
-                throw new HttpRequestException(resp.StatusCode.ToString());
-            }
+            return resp;
         }
         #endregion
 

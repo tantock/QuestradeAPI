@@ -1,6 +1,6 @@
 ﻿namespace QuestradeAPI
 {
-    
+    public enum ErrorType { General, Order}
     public class GeneralErrorResp
     {
         public int code { get; set; }

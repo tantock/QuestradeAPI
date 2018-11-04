@@ -7,6 +7,11 @@ namespace QuestradeAPI
         public int streamPort { get; set; }
     }
 
+    public class StreamResponse
+    {
+        public bool success;
+    }
+
     public class AuthenticateResp
     {
         public string access_token { get; set; }
@@ -17,7 +22,7 @@ namespace QuestradeAPI
         public DateTime expires_in_date { get; set; }
     }
     
-
+    
     public class APIReturn<T>
     {
         public bool isSuccess;
@@ -26,6 +31,7 @@ namespace QuestradeAPI
         public OrderProcesssingErrorResp orderError;
         public DateTime RateReset;
         public int NumCallsLeft;
+        public ErrorType errorType;
     }
 
     #region Market Data
@@ -48,11 +54,11 @@ namespace QuestradeAPI
         public string symbol { get; set; }
         public int symbolId { get; set; }
         public string tier { get; set; } //TODO change to enum
-        public double bidPrice { get; set; }
+        public double? bidPrice { get; set; }
         public int bidSize { get; set; }
-        public double askPrice { get; set; }
+        public double? askPrice { get; set; }
         public int askSize { get; set; }
-        public double lastTradeTrHrs { get; set; }
+        public double? lastTradeTrHrs { get; set; }
         public double lastTradePrice { get; set; }
         public int lastTradeSize { get; set; }
         public TickType lastTradeTick { get; set; }
@@ -237,5 +243,6 @@ namespace QuestradeAPI
     public enum OrderSide { Buy, Sell, Short, Cov, BTO, STC, BTC}
 
     public enum OrderState {Failed, Pending, Accepted, Rejected, CancelPending, Canceled, PartialCanceled, Partial, Executed, ReplacePending, Replaced, Stopped, Suspended, Expired, Queued, Triggered, Activated, PendingRiskReview, ContingentOrder}
+   
     #endregion
 }

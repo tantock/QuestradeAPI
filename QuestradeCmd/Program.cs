@@ -155,6 +155,7 @@ namespace QuestradeCmd
                 Console.WriteLine("6. Reauthenticate");
                 Console.WriteLine("7. Retrive Accounts");
                 Console.WriteLine("8. Account Info");
+                Console.WriteLine("9. Print refresh token");
                 Console.WriteLine("0. Exit");
                 menuEntry = Console.ReadLine();
                 Console.WriteLine();
@@ -244,8 +245,9 @@ namespace QuestradeCmd
                                             {
                                                 candleGranularity -= 1;
 
-                                                var candleReq = qTrade.GetCandles(idStr, start, end, (QuestradeAPI.HistoricalGrandularity)candleGranularity).Result;
+                                                var resp = qTrade.GetCandles(idStr, start, end, (QuestradeAPI.HistoricalGrandularity)candleGranularity).Result;
 
+                                                var candleReq = resp.q_obj;
                                                 Console.WriteLine("\nOpen\tHigh\tLow\tClose\tVolume\n--------------------------------------------------------------");
                                                 for (int i = 0; i < candleReq.candles.Length; i++)
                                                 {
@@ -282,7 +284,7 @@ namespace QuestradeCmd
                         for(int i = 0; i < numQueries; i++)
                         {
                             offset = i * 20;
-                            resultList.Add(qTrade.symbolSearch(consoleEntry, offset).Result);
+                            resultList.Add(qTrade.symbolSearch(consoleEntry, offset).Result.q_obj);
                         }
                         Console.WriteLine(string.Format("\n{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}\n--------------------------------------------------------------", "Symbol", "Symbol ID", "Exchange", "Description"));
                         List<string> outputList = new List<string>();
@@ -298,8 +300,9 @@ namespace QuestradeCmd
                             }
                         }
                         Console.Write("Do you want to save to file? (y or n): ");
-                        char c = (char)Console.Read();
-                        if(c == 'y' || c == 'Y')
+                        string c = Console.ReadLine();
+                        
+                        if(c == "y" || c == "Y")
                         {
                             Console.Write("Enter file name/path: ");
                             consoleEntry = Console.ReadLine();
@@ -333,7 +336,7 @@ namespace QuestradeCmd
                         printLine("Connecting...");
                         break;
                     case "4":
-                        Console.WriteLine("Please enter the symbol ID: ");
+                        Console.Write("Please enter the symbol ID: ");
                         consoleEntry = Console.ReadLine();
                         Task.Run(() => qTrade.StreamQuote(consoleEntry, WebsocketQuoteMsgWrapperCallback));
                         printLine("Connecting...");
@@ -354,7 +357,7 @@ namespace QuestradeCmd
                         }
                         break;
                     case "7":
-                        var AccountList = Task.Run(() => qTrade.GetAccounts()).Result;
+                        var AccountList = Task.Run(() => qTrade.GetAccounts()).Result.q_obj;
 
                         for(int i = 0; i < AccountList.accounts.Length; i++)
                         {
@@ -374,8 +377,11 @@ namespace QuestradeCmd
                             correctFormat = int.TryParse(consoleEntry, out accNum);
                         }
 
-                        var AccountInfo = Task.Run(() => qTrade.GetAccountBalance(accNum.ToString()));
+                        var AccountInfo = Task.Run(() => qTrade.GetAccountBalance(accNum.ToString())).Result.q_obj;
 
+                        break;
+                    case "9":
+                        Console.WriteLine(qTrade.RefreshToken);
                         break;
                 }
                 Console.WriteLine();
@@ -383,9 +389,6 @@ namespace QuestradeCmd
             
             
         }
-
-
-        
     }
 
 
