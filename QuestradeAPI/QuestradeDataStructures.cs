@@ -16,7 +16,17 @@ namespace QuestradeAPI
         public string token_type { get; set; }
         public DateTime expires_in_date { get; set; }
     }
+    
 
+    public class APIReturn<T>
+    {
+        public bool isSuccess;
+        public T q_obj;
+        public GeneralErrorResp generalError;
+        public OrderProcesssingErrorResp orderError;
+        public DateTime RateReset;
+        public int NumCallsLeft;
+    }
 
     #region Market Data
     

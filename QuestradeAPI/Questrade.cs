@@ -12,6 +12,8 @@ namespace QuestradeAPI
         static HttpClient apiClient;
         public static WebSocketSharp.WebSocket notificationClient;
         public static WebSocketSharp.WebSocket quoteStreamClient;
+        
+
         private AuthenticateResp _auth;
         
         /// <summary>
@@ -104,6 +106,57 @@ namespace QuestradeAPI
         #endregion
 
         #region Get Methods
+
+        private async Task<APIReturn<T>> ApiGet<T>(HttpClient client,string requestUri)
+        {
+            APIReturn<T> apiReturn = new APIReturn<T>();
+            var resp = await client.GetAsync(requestUri);
+
+            //Parse rate limit headers
+            System.Collections.Generic.IEnumerable<string> RemainIEnum;
+            bool hasRateLimitRemain = resp.Headers.TryGetValues("X-RateLimit-Remaining", out RemainIEnum);
+
+            System.Collections.Generic.IEnumerable<string> RateResetIEnum;
+            bool hasRateReset = resp.Headers.TryGetValues("X-RateLimit-Reset", out RateResetIEnum);
+
+            int numAPICallsRemain;
+
+            if (hasRateLimitRemain && hasRateReset)
+            {
+                int.TryParse(((string[])RemainIEnum)[0], out numAPICallsRemain);
+                int ResetUnixTime;
+                int.TryParse(((string[])RateResetIEnum)[0], out ResetUnixTime);
+                System.DateTime dt = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
+                apiReturn.RateReset = dt.AddSeconds(ResetUnixTime).ToLocalTime();
+                apiReturn.NumCallsLeft = numAPICallsRemain;
+            }
+
+            //Error handle
+            string respStr = await resp.Content.ReadAsStringAsync();
+
+            if (respStr.Contains("message"))
+            {
+                apiReturn.isSuccess = false;
+                if (resp.IsSuccessStatusCode)
+                {
+                    apiReturn.orderError = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                }
+                else
+                {
+                    apiReturn.generalError = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                }
+            }
+            else
+            {
+                apiReturn.isSuccess = true;
+                apiReturn.q_obj = JsonConvert.DeserializeObject<T>(resp.Content.ReadAsStringAsync().Result);
+            }
+
+            return apiReturn;
+        }
+
+
+
         /// <summary>
         /// Retrives candlestick data between two dates given a symbol id
         /// </summary>
@@ -112,36 +165,34 @@ namespace QuestradeAPI
         /// <param name="end">End Date</param>
         /// <param name="gran">Data granularity</param>
         /// <returns></returns>
-        public async Task<Candles> GetCandles(string id,DateTime start, DateTime end,HistoricalGrandularity gran)
+        public async Task<APIReturn<Candles>> GetCandles(string id,DateTime start, DateTime end,HistoricalGrandularity gran)
         {
-            
-            var resp = await apiClient.GetAsync(string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}",id,DateTimeToString(start), DateTimeToString(end),gran.ToString()));
+            var resp = await ApiGet<Candles>(apiClient, string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}", id, DateTimeToString(start), DateTimeToString(end), gran.ToString()));
 
-
-            if (resp.IsSuccessStatusCode)
-            {
-                return JsonConvert.DeserializeObject<Candles>(resp.Content.ReadAsStringAsync().Result);
-            }
-            else
-            {
-                throw new HttpRequestException(resp.StatusCode.ToString());
-            }
+            return resp;
         }
 
         /// <summary>
         /// Retrives all accounts accessible by this session
         /// </summary>
         /// <returns></returns>
-        public async Task<Accounts> GetAccounts()
+        public async Task<APIReturn<Accounts>> GetAccounts()
         {
-            var resp = await apiClient.GetAsync("v1/accounts");
-            if (resp.IsSuccessStatusCode)
+            var apiCall = await ApiGet(apiClient,"v1/accounts");//apiClient.GetAsync("v1/accounts");
+            APIReturn<Accounts> returnVal = new APIReturn<Accounts>();
+            string returnStr = apiCall.resp.Content.ReadAsStringAsync().Result;
+            if (apiCall.resp.IsSuccessStatusCode)
             {
-                return JsonConvert.DeserializeObject<Accounts>(resp.Content.ReadAsStringAsync().Result);
+                if(returnStr.Contains)
+                returnVal.q_obj = JsonConvert.DeserializeObject<Accounts>(returnStr);
+                returnVal.isSuccess = true;
+                return returnVal;
             }
             else
             {
-                throw new HttpRequestException(resp.StatusCode.ToString());
+                returnVal.isSuccess = false;
+
+                return returnVal;
             }
         }
 
