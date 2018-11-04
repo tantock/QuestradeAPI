@@ -1,10 +1,20 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <ApplicationIcon />
     <OutputType>Library</OutputType>
     <StartupObject />
+    <Version>1.1.0</Version>
+    <PackageProjectUrl>https://github.com/tantock/QuestradeAPI</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/tantock/QuestradeAPI</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Copyright>Tantock</Copyright>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <Company />
+    <Authors>Tantock</Authors>
+    <Product>QuestradeAPIWrapper</Product>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
