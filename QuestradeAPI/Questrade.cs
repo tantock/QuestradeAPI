@@ -94,6 +94,13 @@ namespace QuestradeAPI
             }
         }
         
+        /// <summary>
+        /// The current refresh token
+        /// </summary>
+        public string RefreshToken
+        {
+            get { return _auth.refresh_token; }
+        }
         #endregion
 
         #region Get Methods
