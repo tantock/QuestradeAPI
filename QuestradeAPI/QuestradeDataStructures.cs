@@ -232,7 +232,7 @@ namespace QuestradeAPI
     
     public enum TickType { Up,Down,Equal}
 
-    public enum OrderType { Limit, Stop, StopLimit,TrailStopInPercentage, TrailStopInDollar, TrailStopLimitInPercentage, TrailStopLimitInDollar, LimitOnOpen, LimitOnClose }
+    public enum OrderType { Market, Limit, Stop, StopLimit,TrailStopInPercentage, TrailStopInDollar, TrailStopLimitInPercentage, TrailStopLimitInDollar, LimitOnOpen, LimitOnClose }
 
     public enum OrderTimeInForce { Day, GoodTillCanceled, GoodTillExtendedDay, GoodTillDate, ImmediateOrCancel, FillOrKill }
 

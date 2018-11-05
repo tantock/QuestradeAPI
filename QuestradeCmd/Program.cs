@@ -19,12 +19,12 @@ namespace QuestradeCmd
             if (!message.Contains("success"))
             {
                 var quoteResp = Questrade.JsonToQuotes(message);
-                for(int i = 0; i < quoteResp.quotes.Length; i++)
+                for (int i = 0; i < quoteResp.quotes.Length; i++)
                 {
                     Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
                     messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
                 }
-                
+
             }
         }
 
@@ -36,7 +36,7 @@ namespace QuestradeCmd
             {
                 var executionNotif = Questrade.JsonToExecutionNotif(message);
             }
-            else if(!message.Contains("success"))
+            else if (!message.Contains("success"))
             {
                 var orderNotif = Questrade.JsonToOrderNotif(message);
             }
@@ -77,7 +77,7 @@ namespace QuestradeCmd
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
-                return false;   
+                return false;
             }
             return false;
         }
@@ -119,7 +119,7 @@ namespace QuestradeCmd
 
         static void Main(string[] args)
         {
-            
+
             string initialToken = "";
             string consoleEntry = "";
             string menuEntry = "";
@@ -223,7 +223,6 @@ namespace QuestradeCmd
                                     }
                                     if (correctFormat)
                                     {
-                                        //"16529510"
                                         idStr = consoleEntry;
                                         correctFormat = false;
                                         int candleGranularity;
@@ -281,7 +280,7 @@ namespace QuestradeCmd
                         correctFormat = int.TryParse(Console.ReadLine(), out numQueries);
                         List<Symbols> resultList = new List<Symbols>();
                         int offset;
-                        for(int i = 0; i < numQueries; i++)
+                        for (int i = 0; i < numQueries; i++)
                         {
                             offset = i * 20;
                             resultList.Add(qTrade.symbolSearch(consoleEntry, offset).Result.q_obj);
@@ -289,11 +288,11 @@ namespace QuestradeCmd
                         Console.WriteLine(string.Format("\n{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}\n--------------------------------------------------------------", "Symbol", "Symbol ID", "Exchange", "Description"));
                         List<string> outputList = new List<string>();
                         int count = 0;
-                        for(int j = 0; j < numQueries; j++)
+                        for (int j = 0; j < numQueries; j++)
                         {
                             for (int i = 0; i < resultList[j].symbols.Length; i++)
                             {
-                                
+
                                 outputList.Add(string.Format("{0,-10}\t{1,-10}\t{2,-10}\t{3,-10}", resultList[j].symbols[i].symbol, resultList[j].symbols[i].symbolId, resultList[j].symbols[i].listingExchange, resultList[j].symbols[i].description));
                                 Console.WriteLine(outputList[count]);
                                 count++;
@@ -301,12 +300,12 @@ namespace QuestradeCmd
                         }
                         Console.Write("Do you want to save to file? (y or n): ");
                         string c = Console.ReadLine();
-                        
-                        if(c == "y" || c == "Y")
+
+                        if (c == "y" || c == "Y")
                         {
                             Console.Write("Enter file name/path: ");
                             consoleEntry = Console.ReadLine();
-                            while(consoleEntry == "")
+                            while (consoleEntry == "")
                             {
                                 consoleEntry = Console.ReadLine();
                             }
@@ -320,16 +319,16 @@ namespace QuestradeCmd
                                     }
                                     Console.WriteLine("File written successfully to: {0}", System.IO.Directory.GetCurrentDirectory());
                                 }
-                                
+
                             }
-                            catch(Exception ex)
+                            catch (Exception ex)
                             {
                                 Console.WriteLine(ex.Message);
                             }
-                            
+
                         }
-                        
-                        
+
+
                         break;
                     case "3":
                         Task.Run(() => qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback));
@@ -359,10 +358,10 @@ namespace QuestradeCmd
                     case "7":
                         var AccountList = Task.Run(() => qTrade.GetAccounts()).Result.q_obj;
 
-                        for(int i = 0; i < AccountList.accounts.Length; i++)
+                        for (int i = 0; i < AccountList.accounts.Length; i++)
                         {
                             Console.WriteLine(string.Format("{0} {1} : {2}"
-                                ,AccountList.accounts[i].clientAccountType, AccountList.accounts[i].type, AccountList.accounts[i].number));
+                                , AccountList.accounts[i].clientAccountType, AccountList.accounts[i].type, AccountList.accounts[i].number));
 
                         }
                         break;
@@ -386,8 +385,8 @@ namespace QuestradeCmd
                 }
                 Console.WriteLine();
             } while (menuEntry != "0");
-            
-            
+
+
         }
     }
 
