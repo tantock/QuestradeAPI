@@ -30,8 +30,6 @@ namespace QuestradeCmd
 
         private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
         {
-            Debug.WriteLine(message);//TODO remove debug line
-
             if (message.Contains("executions"))
             {
                 var executionNotif = Questrade.JsonToExecutionNotif(message);
