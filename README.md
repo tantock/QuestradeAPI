@@ -10,14 +10,17 @@ Welcome to a .NET Standard 2.0 implementation to access Questrade's API.
     - Symbol search queries
     - Request L1 and order notification stream via Websocket
 - Deserialized JSON response into class objects
-- External error handling (Parse errors recieved from Questrade servers)
+- External error parsing (Parse errors recieved from Questrade servers)
 - Rate limit data and rate limit reset time
 
 
 ## Usage
+For documentation on how to retrieve a refresh token, visit https://www.questrade.com/api/documentation/getting-started.
+
+Call the Authenticate method to retrieve a new access token once it has expired. 
+Note: any current streaming tasks will have to be restarted when a new access token is retrieved.
 ```
 using System;
-using System.Diagnostics;
 using System.Net;
 using System.Threading.Tasks;
 using QuestradeAPI;
@@ -57,19 +60,20 @@ namespace Example
                     Console.WriteLine("Number of calls remaining: " + AccountList.NumCallsLeft);
 
                     //Rate limit reset time
-                    Console.WriteLine("Rate limit reset on: " + AccountList.RateReset.ToLongDateString() + " " + AccountList.RateReset.ToLongTimeString());
+                    Console.WriteLine("Rate limit reset on: " + AccountList.RateReset.ToLongDateString() 
+                    + " " + AccountList.RateReset.ToLongTimeString());
                 }
                 else
                 {
                     if(AccountList.errorType == ErrorType.General)
                     {
                         var Error = AccountList.generalError;
-                        //Handle error
+                        //Handle error here
                     }
                     else
                     {
                         var Error = AccountList.orderError;
-                        //Handle error
+                        //Handle error here
                     }
                 }
 
@@ -117,10 +121,12 @@ namespace Example
             if (message.Contains("executions"))
             {
                 var executionNotif = Questrade.JsonToExecutionNotif(message);
+                //Do something with notification
             }
             else if(!message.Contains("success"))
             {
                 var orderNotif = Questrade.JsonToOrderNotif(message);
+                //Do something with notification
             }
         }
     }
