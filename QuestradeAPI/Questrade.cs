@@ -14,7 +14,7 @@ namespace QuestradeAPI
         public static WebSocketSharp.WebSocket notificationClient;
         public static WebSocketSharp.WebSocket quoteStreamClient;
 
-        private AuthenticateResp _auth;
+        private static AuthenticateResp _auth;
 
         #region EventHandlers
         public event EventHandler<SuccessAuthEventArgs> OnSuccessfulAuthentication;
