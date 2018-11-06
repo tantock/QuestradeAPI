@@ -12,6 +12,7 @@ Welcome to a .NET Standard 2.0 implementation to access Questrade's API.
 - Deserialized JSON response into class objects
 - External error parsing (Parse errors recieved from Questrade servers)
 - Rate limit data and rate limit reset time
+- Raises events when data is recieved
 
 ## Usage
 For documentation on how to retrieve a refresh token, visit https://www.questrade.com/api/documentation/getting-started.
@@ -25,50 +26,26 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using QuestradeAPI;
+using QuestradeAPI.Events;
 
 namespace Example
 {
     class Program
     {
         static Questrade qTrade;
-        static Task AfterSuccessfulAuthTask = new Task(async () => await AfterSuccessfulAuth());
+        static Task AfterSuccessfulAuthTask = new Task(() => AfterSuccessfulAuth());
 
-        private static async Task AfterSuccessfulAuth()
+        private static void AfterSuccessfulAuth()
         {
-            var Accounts = await qTrade.GetAccounts();
-            //Error handling
-            if (Accounts.isSuccess)
-            {
-                var list = Accounts.q_obj.accounts; //Access q_obj for data
-                for(int i = 0; i < list.Length; i++)
-                {
-                    Console.WriteLine(string.Format("{0} {1} : {2}"
-                            , list[i].clientAccountType
-                            , list[i].type, list[i].number));
-                }
-            }
-            else
-            {
-                if (Accounts.errorType == ErrorType.General)
-                {
-                    var Error = Accounts.generalError;
-                    //Handle error here
-                }
-                else
-                {
-                    var Error = Accounts.orderError;
-                    //Handle error here
-                }
-            }
+            Task.Run(() => qTrade.GetAccounts());
 
             //Subscribe to Level 1 data stream
-            Console.Write("Symbol Id to stream: ");
-            string symbolId = Console.ReadLine();
+            string symbolId = "5953026";
             //Starts stream. Return object is used for error handling.
-            var portQuote = await qTrade.StreamQuote(symbolId, WebsocketQuoteMsgWrapperCallback); 
+            Task.Run(() => qTrade.StreamQuote(symbolId, WebsocketQuoteMsgWrapperCallback));
 
             //Subscribe to notification stream
-            var portNotif = await qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback);
+            Task.Run(() => qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback));
 
         }
 
@@ -80,27 +57,17 @@ namespace Example
             qTrade = new Questrade(refreshToken); //Initialize object
 
             //Add method to events when raised
-            qTrade.SuccessfulAuthentication += QTrade_SuccessfulAuthentication;
-            qTrade.UnsuccessfulAuthentication += QTrade_UnsuccessfulAuthentication;
+            qTrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
+            qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
+            qTrade.OnAccountsRecieved += QTrade_OnAccountsRecieved;
 
             Task.Run(() => qTrade.Authenticate()); //Make authentication
 
             System.Diagnostics.Process.GetCurrentProcess().WaitForExit();
         }
+        
 
-
-        private static void QTrade_SuccessfulAuthentication(object sender, QuestradeAPI.SuccessAuthEventArgs e)
-        {
-            Console.WriteLine(string.Format("Access token will expire on: {0} {1}"
-            , e.TokenExpiry.ToLongDateString(), e.TokenExpiry.ToLongTimeString()));
-
-            if (!(AfterSuccessfulAuthTask.Status == TaskStatus.Running))
-            {
-                AfterSuccessfulAuthTask.Start();
-            }
-        }
-
-        static void QTrade_UnsuccessfulAuthentication(object sender, QuestradeAPI.UnsuccessfulAuthArg e)
+        private static void QTrade_OnUnsuccessfulAuthentication(object sender, UnsuccessfulAuthArgs e)
         {
             Console.WriteLine("Authentication unsuccessful. " + e.resp.ReasonPhrase);
             if (e.resp.StatusCode == (System.Net.HttpStatusCode)400)
@@ -109,7 +76,37 @@ namespace Example
                 string token = Console.ReadLine();
                 Task.Run(() => qTrade.Authenticate(token));
             }
+        }
 
+        private static void QTrade_OnSuccessfulAuthentication(object sender, SuccessAuthEventArgs e)
+        {
+            Console.WriteLine(string.Format("Access token will expire on: {0} {1}", e.TokenExpiry.ToLongDateString(), e.TokenExpiry.ToLongTimeString()));
+
+            if (!(AfterSuccessfulAuthTask.Status == TaskStatus.Running))
+            {
+                AfterSuccessfulAuthTask.Start();
+            }
+        }
+
+
+        private static void QTrade_OnAccountsRecieved(object sender, APIAccountsReturnArgs e)
+        {
+            for (int i = 0; i < e.accounts.accounts.Length; i++)
+            {
+                Console.WriteLine(string.Format("{0} {1} : {2}"
+                    , e.accounts.accounts[i].clientAccountType, e.accounts.accounts[i].type, e.accounts.accounts[i].number));
+
+            }
+        }
+
+        private static void QTrade_OnOrderProcessingErrorRecieved(object sender, OrderProcessingErrorEventArgs e)
+        {
+            Console.WriteLine(string.Format("Error code: {0}. {1} Order ID: {2}", e.OrderProcesssingErrorResp.code, e.OrderProcesssingErrorResp.message, e.OrderProcesssingErrorResp.orderId));
+        }
+
+        private static void QTrade_OnGeneralErrorRecieved(object sender, GeneralErrorEventArgs e)
+        {
+            Console.WriteLine(string.Format("Error code: {0}. {1}", e.GeneralErrorResp.code, e.GeneralErrorResp.message));
         }
 
         private static void WebsocketQuoteMsgWrapperCallback(string message, DateTime messageTime)
@@ -120,8 +117,7 @@ namespace Example
                 for (int i = 0; i < quoteResp.quotes.Length; i++)
                 {
                     Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
-                    messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize,
-                    quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
+                    messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
                 }
 
             }
@@ -142,4 +138,5 @@ namespace Example
         }
     }
 }
+
 ```
