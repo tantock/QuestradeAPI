@@ -41,7 +41,7 @@ namespace Example
 
             //Subscribe to Level 1 data stream
             string symbolId = "5953026";
-            //Starts stream. Return object is used for error handling.
+            //Starts stream
             Task.Run(() => qTrade.StreamQuote(symbolId, WebsocketQuoteMsgWrapperCallback));
 
             //Subscribe to notification stream
