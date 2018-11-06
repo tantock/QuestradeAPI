@@ -12,9 +12,34 @@ namespace QuestradeAPI
         static HttpClient apiClient;
         public static WebSocketSharp.WebSocket notificationClient;
         public static WebSocketSharp.WebSocket quoteStreamClient;
-        
+
         private AuthenticateResp _auth;
-        
+
+
+        #region EventHandlers
+        public event EventHandler<SuccessAuthEventArgs> SuccessfulAuthentication;
+
+        protected virtual void OnSuccessfulAuth(SuccessAuthEventArgs e)
+        {
+            EventHandler<SuccessAuthEventArgs> handler = SuccessfulAuthentication;
+            if (handler != null)
+            {
+                handler(this, e);
+            }
+        }
+
+        public event EventHandler<UnsuccessfulAuthArg> UnsuccessfulAuthentication;
+
+        protected virtual void OnUnsuccessfulAuth(UnsuccessfulAuthArg e)
+        {
+            EventHandler<UnsuccessfulAuthArg> handler = UnsuccessfulAuthentication;
+            if (handler != null)
+            {
+                handler(this, e);
+            }
+        }
+        #endregion
+
         /// <summary>
         /// Ctor for a wrapper for the Questrade API
         /// </summary>
@@ -32,7 +57,7 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="resp"></param>
         /// <param name="accessTokenExpiryCallback"></param>
-        private void PostAuthentication(HttpResponseMessage resp ,Action<DateTime> accessTokenExpiryCallback)
+        private void PostAuthentication(HttpResponseMessage resp)
         {
             var dateTimeNow = DateTime.Now;
             _auth = JsonConvert.DeserializeObject<AuthenticateResp>(resp.Content.ReadAsStringAsync().Result);
@@ -40,7 +65,10 @@ namespace QuestradeAPI
             apiClient = new HttpClient();
             apiClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", string.Format("{0} {1}", _auth.token_type, _auth.access_token));
             apiClient.BaseAddress = new Uri(_auth.api_server);
-            accessTokenExpiryCallback(_auth.expires_in_date);
+
+            SuccessAuthEventArgs arg = new SuccessAuthEventArgs();
+            arg.TokenExpiry = _auth.expires_in_date;
+            OnSuccessfulAuth(arg);
         }
 
         /// <summary>
@@ -52,20 +80,21 @@ namespace QuestradeAPI
         /// <param name="preAuthenticateCallback"></param>
         /// <param name="accessTokenExpiryCallback"></param>
         /// <returns></returns>
-        public async Task<HttpResponseMessage> CodeToAccessToken(string clientId, string redirectURL, string code,Action<string> preAuthenticateCallback, Action<DateTime> accessTokenExpiryCallback)
+        public async Task CodeToAccessToken(string clientId, string redirectURL, string code)
         {
             string req = string.Format("https://login.questrade.com/oauth2/token?client_id={0}&code={1}&grant_type=authorization_code&redirect_uri={2}", clientId, code, redirectURL);
 
             var resp = await authClient.GetAsync(req);
             if (resp.IsSuccessStatusCode)
             {
-                PostAuthentication(resp, accessTokenExpiryCallback);
-
-                return resp;
+                PostAuthentication(resp);
+                
             }
             else
             {
-                return resp;
+                UnsuccessfulAuthArg arg = new UnsuccessfulAuthArg();
+                arg.resp = resp;
+                OnUnsuccessfulAuth(arg);
             }
         }
 
@@ -75,23 +104,26 @@ namespace QuestradeAPI
         /// <param name="preAuthenticateCallback">Method called just prior to authentication request</param>
         /// <param name="accessTokenExpiryCallback">Method called to pass token expiry once authenticated</param>
         /// <returns></returns>
-        public async Task<HttpResponseMessage> Authenticate(Action<string> preAuthenticateCallback, Action<DateTime> accessTokenExpiryCallback)
+        public async Task Authenticate(string refreshToken = "")
         {
             HttpResponseMessage resp = null;
 
-            preAuthenticateCallback("Authenticating...");
+            if(refreshToken != "")
+            {
+                _auth.refresh_token = refreshToken;
+            }
 
             resp = await authClient.GetAsync(string.Format("https://login.questrade.com/oauth2/token?grant_type=refresh_token&refresh_token={0}", _auth.refresh_token));
 
             if (resp.IsSuccessStatusCode)
             {
-                PostAuthentication(resp, accessTokenExpiryCallback);
-
-                return resp;
+                PostAuthentication(resp);
             }
             else
             {
-                return resp;
+                UnsuccessfulAuthArg arg = new UnsuccessfulAuthArg();
+                arg.resp = resp;
+                OnUnsuccessfulAuth(arg);
             }
         }
         
