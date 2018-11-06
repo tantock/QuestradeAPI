@@ -56,15 +56,17 @@ namespace QuestradeAPI
         public double? askPrice { get; set; }
         public int askSize { get; set; }
         public double? lastTradeTrHrs { get; set; }
-        public double lastTradePrice { get; set; }
+        public DateTime? lastTradeTime { get; set; }
+        public double? lastTradePrice { get; set; }
         public int lastTradeSize { get; set; }
-        public TickType lastTradeTick { get; set; }
+        public TickType? lastTradeTick { get; set; }
         public int volume { get; set; }
-        public double openPrice { get; set; }
-        public double highPrice { get; set; }
-        public double lowPrice { get; set; }
+        public double? openPrice { get; set; }
+        public double? highPrice { get; set; }
+        public double? lowPrice { get; set; }
         public bool delay { get; set; }
         public bool isHalted { get; set; }
+        public double? VWAP { get; set; }
     }
 
     public class Quotes
