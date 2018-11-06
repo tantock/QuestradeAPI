@@ -2,6 +2,7 @@
 using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using QuestradeAPI.Events;
 
 namespace QuestradeAPI
 {
@@ -15,30 +16,24 @@ namespace QuestradeAPI
 
         private AuthenticateResp _auth;
 
-
         #region EventHandlers
-        public event EventHandler<SuccessAuthEventArgs> SuccessfulAuthentication;
+        public event EventHandler<SuccessAuthEventArgs> OnSuccessfulAuthentication;
 
-        protected virtual void OnSuccessfulAuth(SuccessAuthEventArgs e)
-        {
-            EventHandler<SuccessAuthEventArgs> handler = SuccessfulAuthentication;
-            if (handler != null)
-            {
-                handler(this, e);
-            }
-        }
+        public event EventHandler<UnsuccessfulAuthArgs> OnUnsuccessfulAuthentication;
+        
+        public event EventHandler<GeneralErrorEventArgs> OnGeneralErrorRecieved;
 
-        public event EventHandler<UnsuccessfulAuthArg> UnsuccessfulAuthentication;
+        public event EventHandler<OrderProcessingErrorEventArgs> OnOrderProcessingErrorRecieved;
+        
+        public event EventHandler<APICandleReturnArgs> OnCandleRecieved;
 
-        protected virtual void OnUnsuccessfulAuth(UnsuccessfulAuthArg e)
-        {
-            EventHandler<UnsuccessfulAuthArg> handler = UnsuccessfulAuthentication;
-            if (handler != null)
-            {
-                handler(this, e);
-            }
-        }
+        public event EventHandler<APIAccountsReturnArgs> OnAccountsRecieved;
+
+        public event EventHandler<APIAccountBalancesReturnArgs> OnAccountBalancesRecieved;
+
+        public event EventHandler<APISymbolSearchReturnArgs> OnSymbolSearchRecieved;
         #endregion
+
 
         /// <summary>
         /// Ctor for a wrapper for the Questrade API
@@ -68,7 +63,7 @@ namespace QuestradeAPI
 
             SuccessAuthEventArgs arg = new SuccessAuthEventArgs();
             arg.TokenExpiry = _auth.expires_in_date;
-            OnSuccessfulAuth(arg);
+            OnSuccessfulAuthentication(this, arg);
         }
 
         /// <summary>
@@ -92,9 +87,9 @@ namespace QuestradeAPI
             }
             else
             {
-                UnsuccessfulAuthArg arg = new UnsuccessfulAuthArg();
+                UnsuccessfulAuthArgs arg = new UnsuccessfulAuthArgs();
                 arg.resp = resp;
-                OnUnsuccessfulAuth(arg);
+                OnUnsuccessfulAuthentication(this, arg);
             }
         }
 
@@ -121,9 +116,9 @@ namespace QuestradeAPI
             }
             else
             {
-                UnsuccessfulAuthArg arg = new UnsuccessfulAuthArg();
+                UnsuccessfulAuthArgs arg = new UnsuccessfulAuthArgs();
                 arg.resp = resp;
-                OnUnsuccessfulAuth(arg);
+                OnUnsuccessfulAuthentication(this, arg);
             }
         }
         
@@ -176,13 +171,15 @@ namespace QuestradeAPI
                 apiReturn.isSuccess = false;
                 if (resp.IsSuccessStatusCode)
                 {
-                    apiReturn.orderError = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
-                    apiReturn.errorType = ErrorType.Order;
+                    var arg = new OrderProcessingErrorEventArgs();
+                    arg.OrderProcesssingErrorResp = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                    OnOrderProcessingErrorRecieved(this, arg); //Raise Error Event
                 }
                 else
                 {
-                    apiReturn.generalError = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
-                    apiReturn.errorType = ErrorType.General;
+                    var arg = new GeneralErrorEventArgs();
+                    arg.GeneralErrorResp = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                    OnGeneralErrorRecieved(this, arg); //Raise Error Event
                 }
             }
             else
@@ -202,19 +199,35 @@ namespace QuestradeAPI
         /// <param name="end">End Date</param>
         /// <param name="gran">Data granularity</param>
         /// <returns></returns>
-        public async Task<APIReturn<Candles>> GetCandles(string id,DateTime start, DateTime end,HistoricalGrandularity gran)
+        public async Task GetCandles(string id,DateTime start, DateTime end,HistoricalGrandularity gran)
         {
-            return await ApiGet<Candles>(apiClient, string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}", id, DateTimeToString(start), DateTimeToString(end), gran.ToString()));
+            var obj = await ApiGet<Candles>(apiClient, string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}", id, DateTimeToString(start), DateTimeToString(end), gran.ToString()));
 
+            if (obj.isSuccess)
+            {
+                var arg = new APICandleReturnArgs();
+                arg.candles = obj.q_obj;
+                arg.NumCallsLeft = obj.NumCallsLeft;
+                arg.RateReset = obj.RateReset;
+                OnCandleRecieved(this, arg);
+            }
         }
 
         /// <summary>
         /// Retrives all accounts accessible by this session
         /// </summary>
         /// <returns></returns>
-        public async Task<APIReturn<Accounts>> GetAccounts()
+        public async Task GetAccounts()
         {
-            return await ApiGet<Accounts>(apiClient,"v1/accounts");
+            var obj = await ApiGet<Accounts>(apiClient,"v1/accounts");
+            if (obj.isSuccess)
+            {
+                var arg = new APIAccountsReturnArgs();
+                arg.accounts = obj.q_obj;
+                arg.NumCallsLeft = obj.NumCallsLeft;
+                arg.RateReset = obj.RateReset;
+                OnAccountsRecieved(this, arg);
+            }
         }
 
         /// <summary>
@@ -222,10 +235,17 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="id">Account number</param>
         /// <returns></returns>
-        public async Task<APIReturn<AccountBalances>> GetAccountBalance(string id)
+        public async Task GetAccountBalance(string id)
         {
-            return await ApiGet<AccountBalances>(apiClient, string.Format("v1/accounts/{0}/balances", id));//var resp = await apiClient.GetAsync(string.Format("v1/accounts/{0}/balances", id));
-            
+            var obj = await ApiGet<AccountBalances>(apiClient, string.Format("v1/accounts/{0}/balances", id));
+            if (obj.isSuccess)
+            {
+                var arg = new APIAccountBalancesReturnArgs();
+                arg.details = obj.q_obj;
+                arg.NumCallsLeft = obj.NumCallsLeft;
+                arg.RateReset = obj.RateReset;
+                OnAccountBalancesRecieved(this, arg);
+            }
         }
 
         /// <summary>
@@ -234,10 +254,17 @@ namespace QuestradeAPI
         /// <param name="query">Search query</param>
         /// <param name="offset">Starting offset on list</param>
         /// <returns></returns>
-        public async Task<APIReturn<Symbols>> symbolSearch(string query, int offset = 0)
+        public async Task symbolSearch(string query, int offset = 0)
         {
-            return await ApiGet<Symbols>(apiClient, string.Format("v1/symbols/search?prefix={0}&offset={1}", query, offset)); //var resp = await apiClient.GetAsync(string.Format("v1/symbols/search?prefix={0}&offset={1}",query,offset));
-            
+            var obj = await ApiGet<Symbols>(apiClient, string.Format("v1/symbols/search?prefix={0}&offset={1}", query, offset)); //var resp = await apiClient.GetAsync(string.Format("v1/symbols/search?prefix={0}&offset={1}",query,offset));
+            if (obj.isSuccess)
+            {
+                var arg = new APISymbolSearchReturnArgs();
+                arg.symbols = obj.q_obj;
+                arg.NumCallsLeft = obj.NumCallsLeft;
+                arg.RateReset = obj.RateReset;
+                OnSymbolSearchRecieved(this, arg);
+            }
         }
 
         #endregion
@@ -367,7 +394,7 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
         /// <returns></returns>
-        public async Task<APIReturn<StreamPort>> SubToOrderNotif(Action<string, DateTime> OnMessageCallback)
+        public async Task SubToOrderNotif(Action<string, DateTime> OnMessageCallback)
         {
 
             var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));//Requests server to send notification to port
@@ -387,7 +414,6 @@ namespace QuestradeAPI
                 notificationClient.Send(_auth.access_token);
                 
             }
-            return resp;
         }
 
         /// <summary>
@@ -396,7 +422,7 @@ namespace QuestradeAPI
         /// <param name="ids">Comma seperated symbol id</param>
         /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
         /// <returns></returns>
-        public async Task<APIReturn<StreamPort>> StreamQuote(string ids, Action<string, DateTime> OnMessageCallback)
+        public async Task StreamQuote(string ids, Action<string, DateTime> OnMessageCallback)
         {
             var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/markets/quotes?ids={0}&stream=true&mode={1}", ids, streamType.WebSocket.ToString()));//Requests server to send notification to port
 
@@ -414,8 +440,7 @@ namespace QuestradeAPI
 
                 quoteStreamClient.Send(_auth.access_token);
             }
-
-            return resp;
+            
         }
         #endregion
 

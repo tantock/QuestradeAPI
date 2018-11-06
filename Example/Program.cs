@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using QuestradeAPI;
+using QuestradeAPI.Events;
 
 namespace Example
 {
@@ -68,7 +69,7 @@ namespace Example
         }
 
 
-        private static void QTrade_SuccessfulAuthentication(object sender, QuestradeAPI.SuccessAuthEventArgs e)
+        private static void QTrade_SuccessfulAuthentication(object sender, SuccessAuthEventArgs e)
         {
             Console.WriteLine(string.Format("Access token will expire on: {0} {1}", e.TokenExpiry.ToLongDateString(), e.TokenExpiry.ToLongTimeString()));
 
@@ -78,7 +79,7 @@ namespace Example
             }
         }
 
-        static void QTrade_UnsuccessfulAuthentication(object sender, QuestradeAPI.UnsuccessfulAuthArg e)
+        static void QTrade_UnsuccessfulAuthentication(object sender, UnsuccessfulAuthArgs e)
         {
             Console.WriteLine("Authentication unsuccessful. " + e.resp.ReasonPhrase);
             if (e.resp.StatusCode == (System.Net.HttpStatusCode)400)

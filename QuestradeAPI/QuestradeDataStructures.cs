@@ -27,11 +27,8 @@ namespace QuestradeAPI
     {
         public bool isSuccess;
         public T q_obj;
-        public GeneralErrorResp generalError;
-        public OrderProcesssingErrorResp orderError;
         public DateTime RateReset;
         public int NumCallsLeft;
-        public ErrorType errorType;
     }
 
     #region Market Data
