@@ -1,4 +1,4 @@
-# QuestradeAPI
+# QuestradeAPI v3.0.0b
 Welcome to a .NET Standard 2.0 implementation to access Questrade's API.
 
 ## Features
@@ -13,7 +13,6 @@ Welcome to a .NET Standard 2.0 implementation to access Questrade's API.
 - External error parsing (Parse errors recieved from Questrade servers)
 - Rate limit data and rate limit reset time
 
-
 ## Usage
 For documentation on how to retrieve a refresh token, visit https://www.questrade.com/api/documentation/getting-started.
 
@@ -21,7 +20,9 @@ Call the Authenticate method to retrieve a new access token once it has expired.
 Note: any current streaming tasks will have to be restarted when a new access token is retrieved.
 ```
 using System;
-using System.Net;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using QuestradeAPI;
 
@@ -29,93 +30,103 @@ namespace Example
 {
     class Program
     {
-        public static void Main (string[] args)
+        static Questrade qTrade;
+        static Task AfterSuccessfulAuthTask = new Task(async () => await AfterSuccessfulAuth());
+
+        private static async Task AfterSuccessfulAuth()
         {
-            string initialToken = "_exampleRefreshTokenFromQuestrade";
-            
-            //Initialization
-            Questrade qTrade = new Questrade(initialToken);
-            
-            //Authentication
-            var resp = qTrade.Authenticate(printLine, printAccessToken).Result;
-            bool isAuthenticated = false;
-            
-            if(resp.StatusCode == HttpStatusCode.OK)
+            var Accounts = await qTrade.GetAccounts();
+            //Error handling
+            if (Accounts.isSuccess)
             {
-                isAuthenticated = true;
-                //Make API call
-                var AccountList = qTrade.GetAccounts().Result;
-
-                //Error handling
-                if (AccountList.isSuccess)
+                var list = Accounts.q_obj.accounts; //Access q_obj for data
+                for(int i = 0; i < list.Length; i++)
                 {
-                    var list = AccountList.q_obj; //Returned deserialized object from JSON response
-                    for (int i = 0; i < list.accounts.Length; i++)
-                    {
-                        Console.WriteLine(string.Format("{0} {1} : {2}"
-                            , list.accounts[i].clientAccountType
-                            , list.accounts[i].type, list.accounts[i].number));
-                    }
-                    //Rate limit data for this type of call
-                    Console.WriteLine("Number of calls remaining: " + AccountList.NumCallsLeft);
-
-                    //Rate limit reset time
-                    Console.WriteLine("Rate limit reset on: " + AccountList.RateReset.ToLongDateString() 
-                    + " " + AccountList.RateReset.ToLongTimeString());
+                    Console.WriteLine(string.Format("{0} {1} : {2}"
+                            , list[i].clientAccountType
+                            , list[i].type, list[i].number));
                 }
-                else
-                {
-                    if(AccountList.errorType == ErrorType.General)
-                    {
-                        var Error = AccountList.generalError;
-                        //Handle error here
-                    }
-                    else
-                    {
-                        var Error = AccountList.orderError;
-                        //Handle error here
-                    }
-                }
-
-                //Subscribe to Level 1 data stream
-                string symbolId = "123456";
-                Task.Run(() => qTrade.StreamQuote(symbolId, WebsocketQuoteMsgWrapperCallback));
-
-                //Subscribe to notification stream
-                Task.Run(() => qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback));
             }
             else
             {
-                Console.WriteLine("Failed to authenticate");
+                if (Accounts.errorType == ErrorType.General)
+                {
+                    var Error = Accounts.generalError;
+                    //Handle error here
+                }
+                else
+                {
+                    var Error = Accounts.orderError;
+                    //Handle error here
+                }
             }
-        }
-        
-        private static void printAccessToken(DateTime expiry)
-        {
-            //Optional
-            Console.WriteLine(string.Format("Access token will expire on: {0} {1}", expiry.ToLongDateString(), expiry.ToLongTimeString()));
+
+            //Subscribe to Level 1 data stream
+            Console.Write("Symbol Id to stream: ");
+            string symbolId = Console.ReadLine();
+            //Starts stream. Return object is used for error handling.
+            var portQuote = await qTrade.StreamQuote(symbolId, WebsocketQuoteMsgWrapperCallback); 
+
+            //Subscribe to notification stream
+            var portNotif = await qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback);
+
         }
 
-        public static void printLine(string message)
+        static void Main(string[] args)
         {
-            //Optional
-            Console.WriteLine(message);
+            Console.Write("Refresh token: ");
+            string refreshToken = Console.ReadLine();
+
+            qTrade = new Questrade(refreshToken); //Initialize object
+
+            //Add method to events when raised
+            qTrade.SuccessfulAuthentication += QTrade_SuccessfulAuthentication;
+            qTrade.UnsuccessfulAuthentication += QTrade_UnsuccessfulAuthentication;
+
+            Task.Run(() => qTrade.Authenticate()); //Make authentication
+
+            System.Diagnostics.Process.GetCurrentProcess().WaitForExit();
         }
-        
+
+
+        private static void QTrade_SuccessfulAuthentication(object sender, QuestradeAPI.SuccessAuthEventArgs e)
+        {
+            Console.WriteLine(string.Format("Access token will expire on: {0} {1}"
+            , e.TokenExpiry.ToLongDateString(), e.TokenExpiry.ToLongTimeString()));
+
+            if (!(AfterSuccessfulAuthTask.Status == TaskStatus.Running))
+            {
+                AfterSuccessfulAuthTask.Start();
+            }
+        }
+
+        static void QTrade_UnsuccessfulAuthentication(object sender, QuestradeAPI.UnsuccessfulAuthArg e)
+        {
+            Console.WriteLine("Authentication unsuccessful. " + e.resp.ReasonPhrase);
+            if (e.resp.StatusCode == (System.Net.HttpStatusCode)400)
+            {
+                Console.Write("Enter a valid token: ");
+                string token = Console.ReadLine();
+                Task.Run(() => qTrade.Authenticate(token));
+            }
+
+        }
+
         private static void WebsocketQuoteMsgWrapperCallback(string message, DateTime messageTime)
         {
             if (!message.Contains("success"))
             {
                 var quoteResp = Questrade.JsonToQuotes(message);
-                for(int i = 0; i < quoteResp.quotes.Length; i++)
+                for (int i = 0; i < quoteResp.quotes.Length; i++)
                 {
                     Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
-                    messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
+                    messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize,
+                    quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
                 }
-                
+
             }
         }
-        
+
         private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
         {
             if (message.Contains("executions"))
@@ -123,7 +134,7 @@ namespace Example
                 var executionNotif = Questrade.JsonToExecutionNotif(message);
                 //Do something with notification
             }
-            else if(!message.Contains("success"))
+            else if (!message.Contains("success"))
             {
                 var orderNotif = Questrade.JsonToOrderNotif(message);
                 //Do something with notification
