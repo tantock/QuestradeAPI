@@ -17,9 +17,9 @@ namespace QuestradeAPI
         private static AuthenticateResp _auth;
 
         #region EventHandlers
-        public event EventHandler<SuccessAuthEventArgs> OnSuccessfulAuthentication;
+        public static event EventHandler<SuccessAuthEventArgs> OnSuccessfulAuthentication;
 
-        public event EventHandler<UnsuccessfulAuthArgs> OnUnsuccessfulAuthentication;
+        public static event EventHandler<UnsuccessfulAuthArgs> OnUnsuccessfulAuthentication;
         
         public event EventHandler<GeneralErrorEventArgs> OnGeneralErrorRecieved;
 
@@ -32,6 +32,8 @@ namespace QuestradeAPI
         public event EventHandler<APIAccountBalancesReturnArgs> OnAccountBalancesRecieved;
 
         public event EventHandler<APISymbolSearchReturnArgs> OnSymbolSearchRecieved;
+        
+
         #endregion
 
 

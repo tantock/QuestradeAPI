@@ -35,8 +35,8 @@ namespace Example
             qTrade = new Questrade(refreshToken); //Initialize object
 
             //Add method to events when raised
-            qTrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
-            qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
+            Questrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
+            Questrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
             qTrade.OnAccountsRecieved += QTrade_OnAccountsRecieved;
 
             Task.Run(() => qTrade.Authenticate()); //Make authentication

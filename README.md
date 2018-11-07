@@ -1,4 +1,4 @@
-# QuestradeAPI v3.0.1b
+# QuestradeAPI v4.0.0b
 Welcome to a .NET Standard 2.0 implementation to access Questrade's API.
 
 ## Features
@@ -57,8 +57,8 @@ namespace Example
             qTrade = new Questrade(refreshToken); //Initialize object
 
             //Add method to events when raised
-            qTrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
-            qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
+            Questrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
+            Questrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
             qTrade.OnAccountsRecieved += QTrade_OnAccountsRecieved;
 
             Task.Run(() => qTrade.Authenticate()); //Make authentication
