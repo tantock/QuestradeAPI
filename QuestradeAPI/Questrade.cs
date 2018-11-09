@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using QuestradeAPI.Events;
+using QuestradeAPI.Websocket;
 
 namespace QuestradeAPI
 {
@@ -11,15 +12,16 @@ namespace QuestradeAPI
     {
         static HttpClient authClient;
         static HttpClient apiClient;
-        public static WebSocketSharp.WebSocket notificationClient;
-        public static WebSocketSharp.WebSocket quoteStreamClient;
+        public static QuestradeWebsocket notificationClient;
+
+        public static QuestradeWebsocket quoteStreamClient;
 
         private static AuthenticateResp _auth;
 
         #region EventHandlers
-        public static event EventHandler<SuccessAuthEventArgs> OnSuccessfulAuthentication;
+        public event EventHandler<SuccessAuthEventArgs> OnSuccessfulAuthentication;
 
-        public static event EventHandler<UnsuccessfulAuthArgs> OnUnsuccessfulAuthentication;
+        public event EventHandler<UnsuccessfulAuthArgs> OnUnsuccessfulAuthentication;
         
         public event EventHandler<GeneralErrorEventArgs> OnGeneralErrorRecieved;
 
@@ -32,7 +34,10 @@ namespace QuestradeAPI
         public event EventHandler<APIAccountBalancesReturnArgs> OnAccountBalancesRecieved;
 
         public event EventHandler<APISymbolSearchReturnArgs> OnSymbolSearchRecieved;
-        
+
+        public event EventHandler<Websocket.Events.MessageEventArg> OnStreamRecieved;
+
+        public event EventHandler<Websocket.Events.MessageEventArg> OnNotificationRecieved;
 
         #endregion
 
@@ -120,7 +125,7 @@ namespace QuestradeAPI
             {
                 UnsuccessfulAuthArgs arg = new UnsuccessfulAuthArgs();
                 arg.resp = resp;
-                OnUnsuccessfulAuthentication(this, arg);
+                OnUnsuccessfulAuthentication(typeof(Questrade), arg);
             }
         }
         
@@ -353,50 +358,11 @@ namespace QuestradeAPI
         #region Streaming methods
         public enum streamType { RawSocket, WebSocket }
 
-        private Action<string, DateTime> SubToOrderNotif_Callback;
-
-        /// <summary>
-        /// This method calls the SubToOrderNotif_Callback method
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        public void SubToOrderNotift_OnMessage(object sender, WebSocketSharp.MessageEventArgs e)
-        {
-            if (e.IsText)
-            {
-                SubToOrderNotif_Callback(e.Data, DateTime.Now);
-            }
-            if (e.IsBinary)
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-        private Action<string, DateTime> StreamQuote_Callback;
-
-        /// <summary>
-        /// This method calls the StreamQuote_Callback method
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        public void StreamQuote_OnMessage(object sender, WebSocketSharp.MessageEventArgs e)
-        {
-            if (e.IsText)
-            {
-                StreamQuote_Callback(e.Data, DateTime.Now);
-            }
-            if (e.IsBinary)
-            {
-                throw new NotImplementedException();
-            }
-        }
-
         /// <summary>
         /// Sends a request to Questrade to push notifcations to this Websocket client. Data is recieved through the OnMessageCallback.
         /// </summary>
-        /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
         /// <returns></returns>
-        public async Task SubToOrderNotif(Action<string, DateTime> OnMessageCallback)
+        public async Task SubToOrderNotif()
         {
 
             var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));//Requests server to send notification to port
@@ -404,27 +370,41 @@ namespace QuestradeAPI
             if (resp.isSuccess)
             {
                 var api_base = new Uri(_auth.api_server);
-                SubToOrderNotif_Callback = OnMessageCallback;
 
-                notificationClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
+                var uri = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
+                notificationClient = new QuestradeWebsocket();
 
+                var cancelToken = new System.Threading.CancellationToken();
+                notificationClient.OnReceive += NotificationClient_OnReceive;
+                notificationClient.OnConnect += NotificationClient_OnConnect;
 
-                notificationClient.OnMessage += SubToOrderNotift_OnMessage;
+                await notificationClient.ConnectAsync(uri, cancelToken);
+                await notificationClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
 
-                notificationClient.Connect();
-
-                notificationClient.Send(_auth.access_token);
-                
             }
+        }
+
+        private void NotificationClient_OnConnect(object sender, Websocket.Events.MessageEventArg e)
+        {
+            System.Diagnostics.Debug.WriteLine(e.message);
+        }
+
+        /// <summary>
+        /// This method calls the OnNotificationRecieved event handler
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void NotificationClient_OnReceive(object sender, Websocket.Events.MessageEventArg e)
+        {
+            OnNotificationRecieved(this, e);
         }
 
         /// <summary>
         /// Sends a request to Questrade to push quote data to this Websocket client. Data is recieved through the OnMessageCallback.
         /// </summary>
         /// <param name="ids">Comma seperated symbol id</param>
-        /// <param name="OnMessageCallback">Callback to pass message from this websocket client</param>
         /// <returns></returns>
-        public async Task StreamQuote(string ids, Action<string, DateTime> OnMessageCallback)
+        public async Task StreamQuote(string ids)
         {
             var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/markets/quotes?ids={0}&stream=true&mode={1}", ids, streamType.WebSocket.ToString()));//Requests server to send notification to port
 
@@ -432,17 +412,32 @@ namespace QuestradeAPI
             {
                 //Setup Websocket to recieve data from
                 var api_base = new Uri(_auth.api_server);
-                StreamQuote_Callback = OnMessageCallback;
 
-                quoteStreamClient = new WebSocketSharp.WebSocket(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
+                var uri = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
+                quoteStreamClient = new QuestradeWebsocket();
 
-                quoteStreamClient.OnMessage += StreamQuote_OnMessage;
-
-                quoteStreamClient.Connect();
-
-                quoteStreamClient.Send(_auth.access_token);
+                var cancelToken = new System.Threading.CancellationToken();
+                quoteStreamClient.OnReceive += quoteStreamClient_OnReceive;
+                quoteStreamClient.OnConnect += quoteStreamClient_OnConnect;
+                await quoteStreamClient.ConnectAsync(uri, cancelToken);
+                await quoteStreamClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
             }
             
+        }
+
+        private void quoteStreamClient_OnConnect(object sender, Websocket.Events.MessageEventArg e)
+        {
+            System.Diagnostics.Debug.WriteLine(e.message);
+        }
+
+        /// <summary>
+        /// This method calls the OnStreamRecieved event handler
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void quoteStreamClient_OnReceive(object sender, Websocket.Events.MessageEventArg e)
+        {
+            OnStreamRecieved(this, e);
         }
         #endregion
 

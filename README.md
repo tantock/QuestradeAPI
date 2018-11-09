@@ -1,4 +1,4 @@
-# QuestradeAPI v4.0.0b
+# QuestradeAPI v1.4.0b
 Welcome to a .NET Standard 2.0 implementation to access Questrade's API.
 
 ## Features
@@ -41,11 +41,11 @@ namespace Example
 
             //Subscribe to Level 1 data stream
             string symbolId = "5953026";
-            //Starts stream
-            Task.Run(() => qTrade.StreamQuote(symbolId, WebsocketQuoteMsgWrapperCallback));
+            //Starts stream. Return object is used for error handling.
+            Task.Run(() => qTrade.StreamQuote(symbolId));
 
             //Subscribe to notification stream
-            Task.Run(() => qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback));
+            Task.Run(() => qTrade.SubToOrderNotif());
 
         }
 
@@ -57,15 +57,44 @@ namespace Example
             qTrade = new Questrade(refreshToken); //Initialize object
 
             //Add method to events when raised
-            Questrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
-            Questrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
+            qTrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
+            qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
             qTrade.OnAccountsRecieved += QTrade_OnAccountsRecieved;
+            qTrade.OnStreamRecieved += QTrade_OnStreamRecieved;
+            qTrade.OnNotificationRecieved += QTrade_OnNotificationRecieved;
 
             Task.Run(() => qTrade.Authenticate()); //Make authentication
 
             System.Diagnostics.Process.GetCurrentProcess().WaitForExit();
         }
-        
+
+        private static void QTrade_OnStreamRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        {
+            if (!e.message.Contains("success"))
+            {
+                var quoteResp = Questrade.JsonToQuotes(e.message);
+                for (int i = 0; i < quoteResp.quotes.Length; i++)
+                {
+                    Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
+                    e.time.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
+                }
+
+            }
+        }
+
+        private static void QTrade_OnNotificationRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        {
+            if (e.message.Contains("executions"))
+            {
+                var executionNotif = Questrade.JsonToExecutionNotif(e.message);
+                //Do something with notification
+            }
+            else if (!e.message.Contains("success"))
+            {
+                var orderNotif = Questrade.JsonToOrderNotif(e.message);
+                //Do something with notification
+            }
+        }
 
         private static void QTrade_OnUnsuccessfulAuthentication(object sender, UnsuccessfulAuthArgs e)
         {
@@ -108,35 +137,9 @@ namespace Example
         {
             Console.WriteLine(string.Format("Error code: {0}. {1}", e.GeneralErrorResp.code, e.GeneralErrorResp.message));
         }
-
-        private static void WebsocketQuoteMsgWrapperCallback(string message, DateTime messageTime)
-        {
-            if (!message.Contains("success"))
-            {
-                var quoteResp = Questrade.JsonToQuotes(message);
-                for (int i = 0; i < quoteResp.quotes.Length; i++)
-                {
-                    Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
-                    messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
-                }
-
-            }
-        }
-
-        private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
-        {
-            if (message.Contains("executions"))
-            {
-                var executionNotif = Questrade.JsonToExecutionNotif(message);
-                //Do something with notification
-            }
-            else if (!message.Contains("success"))
-            {
-                var orderNotif = Questrade.JsonToOrderNotif(message);
-                //Do something with notification
-            }
-        }
+        
     }
 }
+
 
 ```

@@ -15,32 +15,6 @@ namespace QuestradeCmd
             Console.WriteLine(message);
         }
 
-        private static void WebsocketQuoteMsgWrapperCallback(string message, DateTime messageTime)
-        {
-            if (!message.Contains("success"))
-            {
-                var quoteResp = Questrade.JsonToQuotes(message);
-                for (int i = 0; i < quoteResp.quotes.Length; i++)
-                {
-                    Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
-                    messageTime.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
-                }
-
-            }
-        }
-
-        private static void WebsocketNotificationMsgWrapperCallback(string message, DateTime messageTime)
-        {
-            if (message.Contains("executions"))
-            {
-                var executionNotif = Questrade.JsonToExecutionNotif(message);
-            }
-            else if (!message.Contains("success"))
-            {
-                var orderNotif = Questrade.JsonToOrderNotif(message);
-            }
-        }
-
         private static bool CodeToToken(ref Questrade client, string clientId, string code, string redirectUrl)
         {
             try
@@ -194,17 +168,17 @@ namespace QuestradeCmd
 
                             break;
                         case "3":
-                            Task.Run(() => qTrade.SubToOrderNotif(WebsocketNotificationMsgWrapperCallback));
+                            Task.Run(() => qTrade.SubToOrderNotif());
                             printLine("Connecting...");
                             break;
                         case "4":
                             Console.Write("Please enter the symbol ID: ");
                             consoleEntry = Console.ReadLine();
-                            Task.Run(() => qTrade.StreamQuote(consoleEntry, WebsocketQuoteMsgWrapperCallback));
+                            Task.Run(() => qTrade.StreamQuote(consoleEntry));
                             printLine("Connecting...");
                             break;
                         case "5":
-                            Questrade.quoteStreamClient.Close();
+                            //Questrade.quoteStreamClient.Close();
                             break;
                         case "6":
                             Task.Run(() => qTrade.Authenticate());
@@ -268,6 +242,8 @@ namespace QuestradeCmd
                 qTrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
                 qTrade.OnSymbolSearchRecieved += QTrade_OnSymbolSearchRecieved;
                 qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
+                qTrade.OnStreamRecieved += QTrade_OnStreamRecieved;
+                qTrade.OnNotificationRecieved += QTrade_OnNotificationRecieved;
 
                 Task.Run(() => qTrade.Authenticate());
 
@@ -277,6 +253,32 @@ namespace QuestradeCmd
 
             
 
+        }
+
+        private static void QTrade_OnNotificationRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        {
+            if (e.message.Contains("executions"))
+            {
+                var executionNotif = Questrade.JsonToExecutionNotif(e.message);
+            }
+            else if (!e.message.Contains("success"))
+            {
+                var orderNotif = Questrade.JsonToOrderNotif(e.message);
+            }
+        }
+
+        private static void QTrade_OnStreamRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        {
+            if (!e.message.Contains("success"))
+            {
+                var quoteResp = Questrade.JsonToQuotes(e.message);
+                for (int i = 0; i < quoteResp.quotes.Length; i++)
+                {
+                    Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
+                    e.time.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
+                }
+
+            }
         }
 
         private static void QTrade_OnSymbolSearchRecieved(object sender, APISymbolSearchReturnArgs e)
