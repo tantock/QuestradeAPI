@@ -39,6 +39,11 @@ namespace QuestradeAPI
 
         public event EventHandler<Websocket.Events.MessageEventArg> OnNotificationRecieved;
 
+        public event EventHandler<Websocket.Events.MessageEventArg> OnDisconnect;
+
+        public event EventHandler<APIGetErrorArg> OnHttpGetError;
+        
+
         #endregion
 
 
@@ -84,20 +89,30 @@ namespace QuestradeAPI
         /// <returns></returns>
         public async Task CodeToAccessToken(string clientId, string redirectURL, string code)
         {
-            string req = string.Format("https://login.questrade.com/oauth2/token?client_id={0}&code={1}&grant_type=authorization_code&redirect_uri={2}", clientId, code, redirectURL);
+            try
+            {
+                string req = string.Format("https://login.questrade.com/oauth2/token?client_id={0}&code={1}&grant_type=authorization_code&redirect_uri={2}", clientId, code, redirectURL);
 
-            var resp = await authClient.GetAsync(req);
-            if (resp.IsSuccessStatusCode)
-            {
-                PostAuthentication(resp);
-                
+                var resp = await authClient.GetAsync(req);
+                if (resp.IsSuccessStatusCode)
+                {
+                    PostAuthentication(resp);
+
+                }
+                else
+                {
+                    UnsuccessfulAuthArgs arg = new UnsuccessfulAuthArgs();
+                    arg.resp = resp;
+                    OnUnsuccessfulAuthentication(this, arg);
+                }
             }
-            else
+            catch (HttpRequestException ex)
             {
-                UnsuccessfulAuthArgs arg = new UnsuccessfulAuthArgs();
-                arg.resp = resp;
-                OnUnsuccessfulAuthentication(this, arg);
+                APIGetErrorArg arg = new APIGetErrorArg();
+                arg.httpRequestException = ex;
+                OnHttpGetError(this, arg); //Raise http exception event
             }
+
         }
 
         /// <summary>
@@ -108,25 +123,34 @@ namespace QuestradeAPI
         /// <returns></returns>
         public async Task Authenticate(string refreshToken = "")
         {
-            HttpResponseMessage resp = null;
+            HttpResponseMessage resp;
 
             if(refreshToken != "")
             {
                 _auth.refresh_token = refreshToken;
             }
-
-            resp = await authClient.GetAsync(string.Format("https://login.questrade.com/oauth2/token?grant_type=refresh_token&refresh_token={0}", _auth.refresh_token));
-
-            if (resp.IsSuccessStatusCode)
+            try
             {
-                PostAuthentication(resp);
+                resp = await authClient.GetAsync(string.Format("https://login.questrade.com/oauth2/token?grant_type=refresh_token&refresh_token={0}", _auth.refresh_token));
+
+                if (resp.IsSuccessStatusCode)
+                {
+                    PostAuthentication(resp);
+                }
+                else
+                {
+                    UnsuccessfulAuthArgs arg = new UnsuccessfulAuthArgs();
+                    arg.resp = resp;
+                    OnUnsuccessfulAuthentication(typeof(Questrade), arg);
+                }
             }
-            else
+            catch (HttpRequestException ex)
             {
-                UnsuccessfulAuthArgs arg = new UnsuccessfulAuthArgs();
-                arg.resp = resp;
-                OnUnsuccessfulAuthentication(typeof(Questrade), arg);
+                APIGetErrorArg arg = new APIGetErrorArg();
+                arg.httpRequestException = ex;
+                OnHttpGetError(this, arg); //Raise http exception event
             }
+
         }
         
         /// <summary>
@@ -149,53 +173,64 @@ namespace QuestradeAPI
         private async Task<APIReturn<T>> ApiGet<T>(HttpClient client,string requestUri)
         {
             APIReturn<T> apiReturn = new APIReturn<T>();
-            var resp = await client.GetAsync(requestUri);
-
-            //Parse rate limit headers
-            System.Collections.Generic.IEnumerable<string> RemainIEnum;
-            bool hasRateLimitRemain = resp.Headers.TryGetValues("X-RateLimit-Remaining", out RemainIEnum);
-
-            System.Collections.Generic.IEnumerable<string> RateResetIEnum;
-            bool hasRateReset = resp.Headers.TryGetValues("X-RateLimit-Reset", out RateResetIEnum);
-
-            int numAPICallsRemain;
-
-            if (hasRateLimitRemain && hasRateReset)
+            try
             {
-                int.TryParse(((string[])RemainIEnum)[0], out numAPICallsRemain);
-                int ResetUnixTime;
-                int.TryParse(((string[])RateResetIEnum)[0], out ResetUnixTime);
-                System.DateTime dt = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
-                apiReturn.RateReset = dt.AddSeconds(ResetUnixTime).ToLocalTime();
-                apiReturn.NumCallsLeft = numAPICallsRemain;
-            }
+                var resp = await client.GetAsync(requestUri);
 
-            //Error parse
-            string respStr = await resp.Content.ReadAsStringAsync();
+                //Parse rate limit headers
+                System.Collections.Generic.IEnumerable<string> RemainIEnum;
+                bool hasRateLimitRemain = resp.Headers.TryGetValues("X-RateLimit-Remaining", out RemainIEnum);
 
-            if (respStr.Contains("message"))
-            {
-                apiReturn.isSuccess = false;
-                if (resp.IsSuccessStatusCode)
+                System.Collections.Generic.IEnumerable<string> RateResetIEnum;
+                bool hasRateReset = resp.Headers.TryGetValues("X-RateLimit-Reset", out RateResetIEnum);
+
+                int numAPICallsRemain;
+
+                if (hasRateLimitRemain && hasRateReset)
                 {
-                    var arg = new OrderProcessingErrorEventArgs();
-                    arg.OrderProcesssingErrorResp = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
-                    OnOrderProcessingErrorRecieved(this, arg); //Raise Error Event
+                    int.TryParse(((string[])RemainIEnum)[0], out numAPICallsRemain);
+                    int ResetUnixTime;
+                    int.TryParse(((string[])RateResetIEnum)[0], out ResetUnixTime);
+                    System.DateTime dt = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
+                    apiReturn.RateReset = dt.AddSeconds(ResetUnixTime).ToLocalTime();
+                    apiReturn.NumCallsLeft = numAPICallsRemain;
+                }
+
+                //Error parse
+                string respStr = await resp.Content.ReadAsStringAsync();
+
+                if (respStr.Contains("message"))
+                {
+                    apiReturn.isSuccess = false;
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        var arg = new OrderProcessingErrorEventArgs();
+                        arg.OrderProcesssingErrorResp = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                        OnOrderProcessingErrorRecieved(this, arg); //Raise Error Event
+                    }
+                    else
+                    {
+                        var arg = new GeneralErrorEventArgs();
+                        arg.GeneralErrorResp = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                        OnGeneralErrorRecieved(this, arg); //Raise Error Event
+                    }
                 }
                 else
                 {
-                    var arg = new GeneralErrorEventArgs();
-                    arg.GeneralErrorResp = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
-                    OnGeneralErrorRecieved(this, arg); //Raise Error Event
+                    apiReturn.isSuccess = true;
+                    apiReturn.q_obj = JsonConvert.DeserializeObject<T>(resp.Content.ReadAsStringAsync().Result);
                 }
+                return apiReturn;
             }
-            else
+            catch (HttpRequestException ex)
             {
-                apiReturn.isSuccess = true;
-                apiReturn.q_obj = JsonConvert.DeserializeObject<T>(resp.Content.ReadAsStringAsync().Result);
+                APIGetErrorArg arg = new APIGetErrorArg();
+                arg.httpRequestException = ex;
+                OnHttpGetError(this, arg); //Raise http exception event
+                return apiReturn;
             }
-
-            return apiReturn;
+            
+            
         }
         
         /// <summary>
@@ -287,7 +322,7 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="json">JSON response</param>
         /// <returns></returns>
-        public static OrderProcesssingErrorResp JsonToOrderProcessingErrorResp(string json)
+        private static OrderProcesssingErrorResp JsonToOrderProcessingErrorResp(string json)
         {
             return JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(json);
         }
@@ -297,7 +332,7 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="json">JSON response</param>
         /// <returns></returns>
-        public static GeneralErrorResp JsonToGeneralErrorResp(string json)
+        private static GeneralErrorResp JsonToGeneralErrorResp(string json)
         {
             return JsonConvert.DeserializeObject<GeneralErrorResp>(json);
         }
@@ -307,7 +342,7 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="json">JSON response</param>
         /// <returns></returns>
-        public static Orders JsonToOrders(string json)
+        private static Orders JsonToOrders(string json)
         {
             return JsonConvert.DeserializeObject<Orders>(json);
         }
@@ -327,7 +362,7 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="json">JSON response</param>
         /// <returns></returns>
-        public static Executions JsonToExecution(string json)
+        private static Executions JsonToExecution(string json)
         {
             return JsonConvert.DeserializeObject<Executions>(json);
         }
@@ -356,7 +391,7 @@ namespace QuestradeAPI
 
 
         #region Streaming methods
-        public enum streamType { RawSocket, WebSocket }
+        private enum streamType { RawSocket, WebSocket }
 
         /// <summary>
         /// Sends a request to Questrade to push notifcations to this Websocket client. Data is recieved through the OnMessageCallback.
@@ -419,10 +454,16 @@ namespace QuestradeAPI
                 var cancelToken = new System.Threading.CancellationToken();
                 quoteStreamClient.OnReceive += quoteStreamClient_OnReceive;
                 quoteStreamClient.OnConnect += quoteStreamClient_OnConnect;
+                quoteStreamClient.OnClose += QuoteStreamClient_OnClose;
                 await quoteStreamClient.ConnectAsync(uri, cancelToken);
                 await quoteStreamClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
             }
             
+        }
+
+        private void QuoteStreamClient_OnClose(object sender, Websocket.Events.MessageEventArg e)
+        {
+            OnDisconnect(this, e);
         }
 
         private void quoteStreamClient_OnConnect(object sender, Websocket.Events.MessageEventArg e)

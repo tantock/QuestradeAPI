@@ -215,7 +215,7 @@ namespace QuestradeCmd
             Environment.Exit(0);
         }
 
-        static Questrade qTrade = new Questrade();
+        static Questrade qTrade;
 
         static Task menuLoopTask = new Task(() => MenuLoop(qTrade));
 
@@ -244,6 +244,7 @@ namespace QuestradeCmd
                 qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
                 qTrade.OnStreamRecieved += QTrade_OnStreamRecieved;
                 qTrade.OnNotificationRecieved += QTrade_OnNotificationRecieved;
+                qTrade.OnDisconnect += QTrade_OnDisconnect;
 
                 Task.Run(() => qTrade.Authenticate());
 
@@ -253,6 +254,11 @@ namespace QuestradeCmd
 
             
 
+        }
+
+        private static void QTrade_OnDisconnect(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        {
+            Console.WriteLine(string.Format("{0} - {1}", e.time.ToString("HH:mm:ss"), e.message));
         }
 
         private static void QTrade_OnNotificationRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)

@@ -51,4 +51,9 @@ namespace QuestradeAPI.Events
     {
         public Symbols symbols;
     }
+
+    public class APIGetErrorArg : EventArgs
+    {
+        public System.Net.Http.HttpRequestException httpRequestException;
+    }
 }
