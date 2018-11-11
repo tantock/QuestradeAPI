@@ -30,6 +30,12 @@ namespace QuestradeAPI.Events
     {
         public DateTime RateReset;
         public int NumCallsLeft;
+        public DateTime time;
+    }
+
+    public abstract class APIStreamEventArgs : EventArgs
+    {
+        public DateTime time;
     }
 
     public class APICandleReturnArgs : APIReturnEventArgs
@@ -56,4 +62,25 @@ namespace QuestradeAPI.Events
     {
         public System.Net.Http.HttpRequestException httpRequestException;
     }
+
+    public class APIQuoteReturnArgs : APIReturnEventArgs
+    {
+        public Quotes quotes;
+    }
+
+    public class APIStreamQuoteRecievedArgs : APIStreamEventArgs
+    {
+        public Quotes quotes;
+    }
+
+    public class APIOrderNotificationRecievedArg : APIStreamEventArgs
+    {
+        public OrderNotification OrderNotif;
+    }
+
+    public class APIOrderExecNotificationRecievedArg : APIStreamEventArgs
+    {
+        public ExecutionNotification OrderExecNotif;
+    }
+
 }

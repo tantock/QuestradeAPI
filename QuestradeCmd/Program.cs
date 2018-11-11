@@ -178,7 +178,7 @@ namespace QuestradeCmd
                             printLine("Connecting...");
                             break;
                         case "5":
-                            //Questrade.quoteStreamClient.Close();
+                            Task.Run(() => qTrade.CloseStreamQuote());
                             break;
                         case "6":
                             Task.Run(() => qTrade.Authenticate());
@@ -242,9 +242,11 @@ namespace QuestradeCmd
                 qTrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
                 qTrade.OnSymbolSearchRecieved += QTrade_OnSymbolSearchRecieved;
                 qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
-                qTrade.OnStreamRecieved += QTrade_OnStreamRecieved;
-                qTrade.OnNotificationRecieved += QTrade_OnNotificationRecieved;
-                qTrade.OnDisconnect += QTrade_OnDisconnect;
+                qTrade.OnQuoteStreamRecieved += QTrade_OnStreamRecieved;
+                qTrade.OnOrderExecNotifRecieved += QTrade_OnOrderExecNotifRecieved;
+                qTrade.OnOrderNotifRecieved += QTrade_OnOrderNotifRecieved;
+                qTrade.OnStreamDisconnect += QTrade_OnStreamDisconnect;
+                qTrade.OnNotifDisconnect += QTrade_OnNotifDisconnect;
 
                 Task.Run(() => qTrade.Authenticate());
 
@@ -256,34 +258,41 @@ namespace QuestradeCmd
 
         }
 
-        private static void QTrade_OnDisconnect(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        private static void QTrade_OnNotifDisconnect(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
         {
             Console.WriteLine(string.Format("{0} - {1}", e.time.ToString("HH:mm:ss"), e.message));
         }
 
-        private static void QTrade_OnNotificationRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        private static void QTrade_OnStreamDisconnect(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
         {
-            if (e.message.Contains("executions"))
+            Console.WriteLine(string.Format("{0} - {1}", e.time.ToString("HH:mm:ss"), e.message));
+        }
+
+        private static void QTrade_OnOrderNotifRecieved(object sender, APIOrderNotificationRecievedArg e)
+        {
+            for(int i = 0; i < e.OrderNotif.orders.Length; i++)
             {
-                var executionNotif = Questrade.JsonToExecutionNotif(e.message);
-            }
-            else if (!e.message.Contains("success"))
-            {
-                var orderNotif = Questrade.JsonToOrderNotif(e.message);
+                Console.WriteLine(string.Format("{0} - Account: {1}, Symbol: {2}", e.time.ToString("HH:mm:ss"), e.OrderNotif.accountNumber, e.OrderNotif.orders[i].symbol));
             }
         }
 
-        private static void QTrade_OnStreamRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        private static void QTrade_OnOrderExecNotifRecieved(object sender, APIOrderExecNotificationRecievedArg e)
         {
-            if (!e.message.Contains("success"))
+            for(int i = 0; i < e.OrderExecNotif.executions.Length; i++)
             {
-                var quoteResp = Questrade.JsonToQuotes(e.message);
-                for (int i = 0; i < quoteResp.quotes.Length; i++)
-                {
-                    Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
-                    e.time.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
-                }
+                Console.WriteLine(string.Format("{0} - Account: {1}", e.time.ToString("HH:mm:ss"), e.OrderExecNotif.accountNumber, e.OrderExecNotif.executions[i].symbolId));
+            }
+            
+        }
+        
 
+        private static void QTrade_OnStreamRecieved(object sender, APIStreamQuoteRecievedArgs e)
+        {
+            var quoteResp = e.quotes;
+            for (int i = 0; i < quoteResp.quotes.Length; i++)
+            {
+                Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
+                e.time.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
             }
         }
 

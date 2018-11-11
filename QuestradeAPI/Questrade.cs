@@ -10,6 +10,8 @@ namespace QuestradeAPI
 
     public class Questrade
     {
+        private bool isQuoteStreamSuccess;
+        private bool isNotifiSubSuccess;
         static HttpClient authClient;
         static HttpClient apiClient;
         public static QuestradeWebsocket notificationClient;
@@ -35,11 +37,15 @@ namespace QuestradeAPI
 
         public event EventHandler<APISymbolSearchReturnArgs> OnSymbolSearchRecieved;
 
-        public event EventHandler<Websocket.Events.MessageEventArg> OnStreamRecieved;
+        public event EventHandler<APIStreamQuoteRecievedArgs> OnQuoteStreamRecieved;
 
-        public event EventHandler<Websocket.Events.MessageEventArg> OnNotificationRecieved;
+        public event EventHandler<APIOrderNotificationRecievedArg> OnOrderNotifRecieved;
 
-        public event EventHandler<Websocket.Events.MessageEventArg> OnDisconnect;
+        public event EventHandler<APIOrderExecNotificationRecievedArg> OnOrderExecNotifRecieved;
+
+        public event EventHandler<Websocket.Events.MessageEventArg> OnStreamDisconnect;
+
+        public event EventHandler<Websocket.Events.MessageEventArg> OnNotifDisconnect;
 
         public event EventHandler<APIGetErrorArg> OnHttpGetError;
         
@@ -56,6 +62,24 @@ namespace QuestradeAPI
             _auth = new AuthenticateResp();
             _auth.refresh_token = token;
             authClient = new HttpClient();
+            if(notificationClient != null && notificationClient.State == System.Net.WebSockets.WebSocketState.Open)
+            {
+                isNotifiSubSuccess = true;
+            }
+            else
+            {
+                isNotifiSubSuccess = false;
+            }
+
+            if (quoteStreamClient != null && quoteStreamClient.State == System.Net.WebSockets.WebSocketState.Open)
+            {
+                isQuoteStreamSuccess = true;
+            }
+            else
+            {
+                isQuoteStreamSuccess = false;
+            }
+            
         }
         #region Authenticate methods
 
@@ -202,23 +226,12 @@ namespace QuestradeAPI
                 if (respStr.Contains("message"))
                 {
                     apiReturn.isSuccess = false;
-                    if (resp.IsSuccessStatusCode)
-                    {
-                        var arg = new OrderProcessingErrorEventArgs();
-                        arg.OrderProcesssingErrorResp = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
-                        OnOrderProcessingErrorRecieved(this, arg); //Raise Error Event
-                    }
-                    else
-                    {
-                        var arg = new GeneralErrorEventArgs();
-                        arg.GeneralErrorResp = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
-                        OnGeneralErrorRecieved(this, arg); //Raise Error Event
-                    }
+                    ParseErrorAndRaiseEvent(resp);
                 }
                 else
                 {
                     apiReturn.isSuccess = true;
-                    apiReturn.q_obj = JsonConvert.DeserializeObject<T>(resp.Content.ReadAsStringAsync().Result);
+                    apiReturn.q_obj = JsonToObject<T>(resp.Content.ReadAsStringAsync().Result);
                 }
                 return apiReturn;
             }
@@ -231,6 +244,29 @@ namespace QuestradeAPI
             }
             
             
+        }
+
+        private void ParseErrorAndRaiseEvent(HttpResponseMessage resp)
+        {
+            if (resp.IsSuccessStatusCode)
+            {
+                var arg = new OrderProcessingErrorEventArgs();
+                arg.OrderProcesssingErrorResp = JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                OnOrderProcessingErrorRecieved(this, arg); //Raise Error Event
+            }
+            else
+            {
+                var arg = new GeneralErrorEventArgs();
+                arg.GeneralErrorResp = JsonConvert.DeserializeObject<GeneralErrorResp>(resp.Content.ReadAsStringAsync().Result);
+                OnGeneralErrorRecieved(this, arg); //Raise Error Event
+            }
+        }
+
+        private void ParseStreamErrorAndRaiseEvent(string message)
+        {
+            var arg = new GeneralErrorEventArgs();
+            arg.GeneralErrorResp = JsonToObject<GeneralErrorResp>(message);
+            OnGeneralErrorRecieved(this, arg); //Raise Error Event
         }
         
         /// <summary>
@@ -318,73 +354,13 @@ namespace QuestradeAPI
 
         #region JSON deserializer
         /// <summary>
-        /// Deserializes JSON response and returns a Order Error object
+        /// Deserializes JSON response and returns an object
         /// </summary>
         /// <param name="json">JSON response</param>
         /// <returns></returns>
-        private static OrderProcesssingErrorResp JsonToOrderProcessingErrorResp(string json)
+        private static T JsonToObject<T>(string json)
         {
-            return JsonConvert.DeserializeObject<OrderProcesssingErrorResp>(json);
-        }
-
-        /// <summary>
-        /// Deserializes JSON response and returns a General Error object
-        /// </summary>
-        /// <param name="json">JSON response</param>
-        /// <returns></returns>
-        private static GeneralErrorResp JsonToGeneralErrorResp(string json)
-        {
-            return JsonConvert.DeserializeObject<GeneralErrorResp>(json);
-        }
-
-        /// <summary>
-        /// Deserializes JSON response and returns a Orders object
-        /// </summary>
-        /// <param name="json">JSON response</param>
-        /// <returns></returns>
-        private static Orders JsonToOrders(string json)
-        {
-            return JsonConvert.DeserializeObject<Orders>(json);
-        }
-
-        /// <summary>
-        /// Deserializes JSON response and returns a Quotes object
-        /// </summary>
-        /// <param name="json">JSON response</param>
-        /// <returns></returns>
-        public static Quotes JsonToQuotes(string json)
-        {
-            return JsonConvert.DeserializeObject<Quotes>(json);
-        }
-
-        /// <summary>
-        /// Deserializes JSON response and returns a Execution object
-        /// </summary>
-        /// <param name="json">JSON response</param>
-        /// <returns></returns>
-        private static Executions JsonToExecution(string json)
-        {
-            return JsonConvert.DeserializeObject<Executions>(json);
-        }
-
-        /// <summary>
-        /// Deserializes JSON response and returns a Execution notification object
-        /// </summary>
-        /// <param name="json">JSON response</param>
-        /// <returns></returns>
-        public static ExecutionNotification JsonToExecutionNotif(string json)
-        {
-            return JsonConvert.DeserializeObject<ExecutionNotification>(json);
-        }
-
-        /// <summary>
-        /// Deserializes JSON response and returns a Execution notification object
-        /// </summary>
-        /// <param name="json">JSON response</param>
-        /// <returns></returns>
-        public static OrderNotification JsonToOrderNotif(string json)
-        {
-            return JsonConvert.DeserializeObject<OrderNotification>(json);
+            return JsonConvert.DeserializeObject<T>(json);
         }
 
         #endregion
@@ -412,11 +388,27 @@ namespace QuestradeAPI
                 var cancelToken = new System.Threading.CancellationToken();
                 notificationClient.OnReceive += NotificationClient_OnReceive;
                 notificationClient.OnConnect += NotificationClient_OnConnect;
+                notificationClient.OnClose += NotificationClient_OnClose;
 
                 await notificationClient.ConnectAsync(uri, cancelToken);
                 await notificationClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
 
             }
+        }
+
+        public async Task CloseSubToOrderNotif()
+        {
+            if(notificationClient != null)
+            {
+                var cancelToken = new System.Threading.CancellationToken();
+                await notificationClient.CloseAsync(cancelToken);
+            }
+        }
+
+        private void NotificationClient_OnClose(object sender, Websocket.Events.MessageEventArg e)
+        {
+            isNotifiSubSuccess = false;
+            OnNotifDisconnect(this, e);
         }
 
         private void NotificationClient_OnConnect(object sender, Websocket.Events.MessageEventArg e)
@@ -431,7 +423,35 @@ namespace QuestradeAPI
         /// <param name="e"></param>
         private void NotificationClient_OnReceive(object sender, Websocket.Events.MessageEventArg e)
         {
-            OnNotificationRecieved(this, e);
+            if (isNotifiSubSuccess)
+            {
+                if (e.message.Contains("executions"))
+                {
+                    var arg = new APIOrderExecNotificationRecievedArg();
+                    arg.time = DateTime.Now;
+                    arg.OrderExecNotif = JsonToObject<ExecutionNotification>(e.message);
+                    OnOrderExecNotifRecieved(this, arg);
+                }
+                else if (!e.message.Contains("success"))
+                {
+                    var arg = new APIOrderNotificationRecievedArg();
+                    arg.time = DateTime.Now;
+                    arg.OrderNotif = JsonToObject<OrderNotification>(e.message);
+                    OnOrderNotifRecieved(this, arg);
+                }
+            }
+            else
+            {
+                StreamResponse streamResponse = JsonToObject<StreamResponse>(e.message);
+                if (streamResponse.success)
+                {
+                    isNotifiSubSuccess = true;
+                }
+                else
+                {
+                    ParseStreamErrorAndRaiseEvent(e.message);
+                }
+            }
         }
 
         /// <summary>
@@ -461,9 +481,19 @@ namespace QuestradeAPI
             
         }
 
+        public async Task CloseStreamQuote()
+        {
+            if(quoteStreamClient != null)
+            {
+                var cancelToken = new System.Threading.CancellationToken();
+                await quoteStreamClient.CloseAsync(cancelToken);
+            }
+        }
+
         private void QuoteStreamClient_OnClose(object sender, Websocket.Events.MessageEventArg e)
         {
-            OnDisconnect(this, e);
+            isQuoteStreamSuccess = false;   
+            OnStreamDisconnect(this, e);
         }
 
         private void quoteStreamClient_OnConnect(object sender, Websocket.Events.MessageEventArg e)
@@ -472,13 +502,34 @@ namespace QuestradeAPI
         }
 
         /// <summary>
-        /// This method calls the OnStreamRecieved event handler
+        /// This method is called when websocket recieves a message and calls the OnStreamRecieved event handler
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private void quoteStreamClient_OnReceive(object sender, Websocket.Events.MessageEventArg e)
         {
-            OnStreamRecieved(this, e);
+            if (isQuoteStreamSuccess)
+            {
+                APIStreamQuoteRecievedArgs arg = new APIStreamQuoteRecievedArgs();
+                arg.time = DateTime.Now;
+                var message = e.message;
+                arg.quotes = JsonToObject<Quotes>(message);
+                OnQuoteStreamRecieved(this, arg);
+            }
+            else
+            {
+                StreamResponse streamResponse = JsonToObject<StreamResponse>(e.message);
+                if (streamResponse.success)
+                {
+                    isQuoteStreamSuccess = true;
+                }
+                else
+                {
+                    ParseStreamErrorAndRaiseEvent(e.message);
+                }
+            }
+
+            
         }
         #endregion
 

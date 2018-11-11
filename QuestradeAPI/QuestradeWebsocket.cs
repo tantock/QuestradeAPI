@@ -111,7 +111,20 @@ namespace QuestradeAPI.Websocket
             }
         }
 
+        public async Task CloseAsync(System.Threading.CancellationToken cancel)
+        {
+            if(ws.State == WebSocketState.Open)
+            {
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", cancel);
+            }
+            
+            ws.Dispose();
+        }
 
+        public WebSocketState State
+        {
+            get { return ws.State; }
+        }
     }
 
 

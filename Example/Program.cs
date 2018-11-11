@@ -38,39 +38,29 @@ namespace Example
             qTrade.OnSuccessfulAuthentication += QTrade_OnSuccessfulAuthentication;
             qTrade.OnUnsuccessfulAuthentication += QTrade_OnUnsuccessfulAuthentication;
             qTrade.OnAccountsRecieved += QTrade_OnAccountsRecieved;
-            qTrade.OnStreamRecieved += QTrade_OnStreamRecieved;
-            qTrade.OnNotificationRecieved += QTrade_OnNotificationRecieved;
+            qTrade.OnQuoteStreamRecieved += QTrade_OnStreamRecieved;
+            qTrade.OnOrderNotifRecieved += QTrade_OnOrderNotifRecieved;
 
             Task.Run(() => qTrade.Authenticate()); //Make authentication
 
             System.Diagnostics.Process.GetCurrentProcess().WaitForExit();
         }
 
-        private static void QTrade_OnStreamRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        private static void QTrade_OnStreamRecieved(object sender, APIStreamQuoteRecievedArgs e)
         {
-            if (!e.message.Contains("success"))
+            var quoteResp = e.quotes;
+            for (int i = 0; i < quoteResp.quotes.Length; i++)
             {
-                var quoteResp = Questrade.JsonToQuotes(e.message);
-                for (int i = 0; i < quoteResp.quotes.Length; i++)
-                {
-                    Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
-                    e.time.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
-                }
-
+                Console.WriteLine(string.Format("{0} - Bid: {1}, BidSize: {2}, Ask: {3}, AskSize: {4}",
+                e.time.ToString("HH:mm:ss"), quoteResp.quotes[i].bidPrice, quoteResp.quotes[i].bidSize, quoteResp.quotes[i].askPrice, quoteResp.quotes[i].askSize));
             }
         }
 
-        private static void QTrade_OnNotificationRecieved(object sender, QuestradeAPI.Websocket.Events.MessageEventArg e)
+        private static void QTrade_OnOrderNotifRecieved(object sender, APIOrderNotificationRecievedArg e)
         {
-            if (e.message.Contains("executions"))
+            for (int i = 0; i < e.OrderNotif.orders.Length; i++)
             {
-                var executionNotif = Questrade.JsonToExecutionNotif(e.message);
-                //Do something with notification
-            }
-            else if (!e.message.Contains("success"))
-            {
-                var orderNotif = Questrade.JsonToOrderNotif(e.message);
-                //Do something with notification
+                Console.WriteLine(string.Format("{0} - Account: {1}, Symbol: {2}", e.time.ToString("HH:mm:ss"), e.OrderNotif.accountNumber, e.OrderNotif.orders[i].symbol));
             }
         }
 
