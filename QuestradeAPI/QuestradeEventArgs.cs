@@ -40,6 +40,10 @@ namespace QuestradeAPI.Events
 
     public class APICandleReturnArgs : APIReturnEventArgs
     {
+        public int id;
+        public DateTime startTime;
+        public DateTime endTime;
+        public HistoricalGrandularity interval;
         public Candles candles;
     }
 

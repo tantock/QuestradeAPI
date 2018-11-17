@@ -287,6 +287,10 @@ namespace QuestradeAPI
                 arg.candles = obj.q_obj;
                 arg.NumCallsLeft = obj.NumCallsLeft;
                 arg.RateReset = obj.RateReset;
+                arg.id = int.Parse(id);
+                arg.startTime = start;
+                arg.endTime = end;
+                arg.interval = gran;
                 OnCandleRecieved(this, arg);
             }
         }
