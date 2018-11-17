@@ -1,4 +1,4 @@
-# QuestradeAPI v1.5.0b
+# QuestradeAPI v1.6.0b
 Welcome to a .NET Standard 2.0 implementation to access Questrade's API.
 
 ## Features
