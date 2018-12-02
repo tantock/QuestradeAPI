@@ -19,28 +19,30 @@ namespace QuestradeAPI.Websocket
 
         public event EventHandler<MessageEventArg> OnClose;
 
-        public async Task ConnectAsync(Uri uri, System.Threading.CancellationToken cancel)
+        public void ConnectAsync(Uri uri, System.Threading.CancellationToken cancel)
         {
-            try
+            Task.Run(() =>
             {
-                await ws.ConnectAsync(uri, cancel);
-                if (ws.State == WebSocketState.Open)
+                try
                 {
-                    MessageEventArg arg = new MessageEventArg();
-                    arg.message = "Connection Established";
-                    OnConnect(this, arg);
-                    RecieveAsync(cancel);
+                    ws.ConnectAsync(uri, cancel);
+                    if (ws.State == WebSocketState.Open)
+                    {
+                        MessageEventArg arg = new MessageEventArg();
+                        arg.message = "Connection Established";
+                        OnConnect(this, arg);
+                        RecieveAsync(cancel);
+                    }
                 }
-            }
-            catch(WebSocketException ex)
-            {
-                ErrorEventArg arg = new ErrorEventArg();
-                arg.time = DateTime.Now;
-                arg.socketState = ws.State;
-                arg.socketException = ex;
-                OnError(this, arg);
-            }
-            
+                catch (WebSocketException ex)
+                {
+                    ErrorEventArg arg = new ErrorEventArg();
+                    arg.time = DateTime.Now;
+                    arg.socketState = ws.State;
+                    arg.socketException = ex;
+                    OnError(this, arg);
+                }
+            }, cancel);
             
         }
 
@@ -91,34 +93,42 @@ namespace QuestradeAPI.Websocket
             
         }
 
-        public async Task SendAsync(string message, Uri uri, System.Threading.CancellationToken cancel, System.Text.Encoding encoding)
+        public void SendAsync(string message, Uri uri, System.Threading.CancellationToken cancel, System.Text.Encoding encoding)
         {
-            try
+            Task.Run(() =>
             {
-                ArraySegment<byte> buffer = new ArraySegment<byte>(encoding.GetBytes(message.ToCharArray()));
+                try
+                {
+                    ArraySegment<byte> buffer = new ArraySegment<byte>(encoding.GetBytes(message.ToCharArray()));
 
-                await ws.SendAsync(buffer, WebSocketMessageType.Text, true, cancel);
+                    ws.SendAsync(buffer, WebSocketMessageType.Text, true, cancel);
 
-                System.Diagnostics.Debug.WriteLine("Sent success.");
-            }
-            catch (WebSocketException ex)
-            {
-                ErrorEventArg arg = new ErrorEventArg();
-                arg.time = DateTime.Now;
-                arg.socketState = ws.State;
-                arg.socketException = ex;
-                OnError(this, arg);
-            }
+                    System.Diagnostics.Debug.WriteLine("Sent success.");
+                }
+                catch (WebSocketException ex)
+                {
+                    ErrorEventArg arg = new ErrorEventArg();
+                    arg.time = DateTime.Now;
+                    arg.socketState = ws.State;
+                    arg.socketException = ex;
+                    OnError(this, arg);
+                }
+            }, cancel);
+            
         }
 
-        public async Task CloseAsync(System.Threading.CancellationToken cancel)
+        public void CloseAsync(System.Threading.CancellationToken cancel)
         {
-            if(ws.State == WebSocketState.Open)
+            Task.Run(() =>
             {
-                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", cancel);
-            }
+                if (ws.State == WebSocketState.Open)
+                {
+                    ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", cancel);
+                }
+
+                ws.Dispose();
+            }, cancel);
             
-            ws.Dispose();
         }
 
         public WebSocketState State

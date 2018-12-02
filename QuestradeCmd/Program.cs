@@ -135,7 +135,7 @@ namespace QuestradeCmd
                                                 {
                                                     candleGranularity -= 1;
 
-                                                    Task.Run(() => qTrade.GetCandles(idStr, start, end, (QuestradeAPI.HistoricalGrandularity)candleGranularity));
+                                                    qTrade.GetCandlesAsync(idStr, start, end, (QuestradeAPI.HistoricalGrandularity)candleGranularity, new System.Threading.CancellationTokenSource());
 
 
                                                 }

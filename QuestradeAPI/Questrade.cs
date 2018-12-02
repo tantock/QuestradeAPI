@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using QuestradeAPI.Events;
@@ -194,46 +196,55 @@ namespace QuestradeAPI
         /// <param name="client">Authenticated http client</param>
         /// <param name="requestUri">Request URIm</param>
         /// <returns></returns>
-        private async Task<APIReturn<T>> ApiGet<T>(HttpClient client,string requestUri)
+        private APIReturn<T> ApiGet<T>(HttpClient client,string requestUri, CancellationToken token = default(CancellationToken))
         {
             APIReturn<T> apiReturn = new APIReturn<T>();
             try
             {
-                var resp = await client.GetAsync(requestUri);
+                token.ThrowIfCancellationRequested();
+                var resp = client.GetAsync(requestUri, token).Result;//, token);
 
-                //Parse rate limit headers
-                System.Collections.Generic.IEnumerable<string> RemainIEnum;
-                bool hasRateLimitRemain = resp.Headers.TryGetValues("X-RateLimit-Remaining", out RemainIEnum);
-
-                System.Collections.Generic.IEnumerable<string> RateResetIEnum;
-                bool hasRateReset = resp.Headers.TryGetValues("X-RateLimit-Reset", out RateResetIEnum);
-
-                int numAPICallsRemain;
-
-                if (hasRateLimitRemain && hasRateReset)
+                if (!token.IsCancellationRequested)
                 {
-                    int.TryParse(((string[])RemainIEnum)[0], out numAPICallsRemain);
-                    int ResetUnixTime;
-                    int.TryParse(((string[])RateResetIEnum)[0], out ResetUnixTime);
-                    System.DateTime dt = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
-                    apiReturn.RateReset = dt.AddSeconds(ResetUnixTime).ToLocalTime();
-                    apiReturn.NumCallsLeft = numAPICallsRemain;
-                }
+                    //Parse rate limit headers
+                    System.Collections.Generic.IEnumerable<string> RemainIEnum;
+                    bool hasRateLimitRemain = resp.Headers.TryGetValues("X-RateLimit-Remaining", out RemainIEnum);
 
-                //Error parse
-                string respStr = await resp.Content.ReadAsStringAsync();
+                    System.Collections.Generic.IEnumerable<string> RateResetIEnum;
+                    bool hasRateReset = resp.Headers.TryGetValues("X-RateLimit-Reset", out RateResetIEnum);
 
-                if (respStr.Contains("message"))
-                {
-                    apiReturn.isSuccess = false;
-                    ParseErrorAndRaiseEvent(resp);
+                    int numAPICallsRemain;
+
+                    if (hasRateLimitRemain && hasRateReset)
+                    {
+                        int.TryParse(((string[])RemainIEnum)[0], out numAPICallsRemain);
+                        int ResetUnixTime;
+                        int.TryParse(((string[])RateResetIEnum)[0], out ResetUnixTime);
+                        System.DateTime dt = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
+                        apiReturn.RateReset = dt.AddSeconds(ResetUnixTime).ToLocalTime();
+                        apiReturn.NumCallsLeft = numAPICallsRemain;
+                    }
+
+                    //Error parse
+                    string respStr = resp.Content.ReadAsStringAsync().Result;
+
+                    if (respStr.Contains("message"))
+                    {
+                        apiReturn.isSuccess = false;
+                        ParseErrorAndRaiseEvent(resp);
+                    }
+                    else
+                    {
+                        apiReturn.isSuccess = true;
+                        apiReturn.q_obj = JsonToObject<T>(resp.Content.ReadAsStringAsync().Result);
+                    }
+                    return apiReturn;
                 }
                 else
                 {
-                    apiReturn.isSuccess = true;
-                    apiReturn.q_obj = JsonToObject<T>(resp.Content.ReadAsStringAsync().Result);
+                    return default(APIReturn<T>);
                 }
-                return apiReturn;
+                
             }
             catch (HttpRequestException ex)
             {
@@ -268,7 +279,7 @@ namespace QuestradeAPI
             arg.GeneralErrorResp = JsonToObject<GeneralErrorResp>(message);
             OnGeneralErrorRecieved(this, arg); //Raise Error Event
         }
-        
+
         /// <summary>
         /// Retrives candlestick data between two dates given a symbol id
         /// </summary>
@@ -276,58 +287,88 @@ namespace QuestradeAPI
         /// <param name="start">Start date</param>
         /// <param name="end">End Date</param>
         /// <param name="gran">Data granularity</param>
-        /// <returns></returns>
-        public async Task GetCandles(string id,DateTime start, DateTime end,HistoricalGrandularity gran)
+        /// <param name="cancellationTokenSource">Cancellation token source</param>
+        /// <param name="cancellationTokenSourceList">Cancellation token sourc list. Will remove cancelation token from list once finished canceling.</param>
+        public void GetCandlesAsync(string id,DateTime start, DateTime end,HistoricalGrandularity gran, CancellationTokenSource cancellationTokenSource)
         {
-            var obj = await ApiGet<Candles>(apiClient, string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}", id, DateTimeToString(start), DateTimeToString(end), gran.ToString()));
-
-            if (obj.isSuccess)
+            CancellationToken ct = cancellationTokenSource.Token;
+            Task.Run(() =>
             {
-                var arg = new APICandleReturnArgs();
-                arg.candles = obj.q_obj;
-                arg.NumCallsLeft = obj.NumCallsLeft;
-                arg.RateReset = obj.RateReset;
-                arg.id = int.Parse(id);
-                arg.startTime = start;
-                arg.endTime = end;
-                arg.interval = gran;
-                OnCandleRecieved(this, arg);
-            }
+                ct.ThrowIfCancellationRequested();
+                var obj = ApiGet<Candles>(apiClient, string.Format("v1/markets/candles/{0}?startTime={1}&endTime={2}&interval={3}", id, DateTimeToString(start), DateTimeToString(end), gran.ToString()), ct);
+
+                //obj.Wait(ct);
+
+                if (obj.isSuccess && !ct.IsCancellationRequested)
+                {
+                    var arg = new APICandleReturnArgs();
+                    arg.candles = obj.q_obj;
+                    arg.NumCallsLeft = obj.NumCallsLeft;
+                    arg.RateReset = obj.RateReset;
+                    arg.id = int.Parse(id);
+                    arg.startTime = start;
+                    arg.endTime = end;
+                    arg.interval = gran;
+                    OnCandleRecieved(this, arg);
+                }
+
+                
+
+            }, ct);
+            
         }
 
         /// <summary>
         /// Retrives all accounts accessible by this session
+        /// /// <param name="cancellationTokenSource">Cancellation token source</param>
         /// </summary>
-        /// <returns></returns>
-        public async Task GetAccounts()
+        public void GetAccountsAsync(CancellationTokenSource cancellationTokenSource)
         {
-            var obj = await ApiGet<Accounts>(apiClient,"v1/accounts");
-            if (obj.isSuccess)
+            CancellationToken ct = cancellationTokenSource.Token;
+            Task.Run(() =>
             {
-                var arg = new APIAccountsReturnArgs();
-                arg.accounts = obj.q_obj;
-                arg.NumCallsLeft = obj.NumCallsLeft;
-                arg.RateReset = obj.RateReset;
-                OnAccountsRecieved(this, arg);
-            }
+                ct.ThrowIfCancellationRequested();
+                var obj = ApiGet<Accounts>(apiClient, "v1/accounts", ct);
+
+                //obj.Wait(ct);
+
+                if (obj.isSuccess && !ct.IsCancellationRequested)
+                {
+                    var arg = new APIAccountsReturnArgs();
+                    arg.accounts = obj.q_obj;
+                    arg.NumCallsLeft = obj.NumCallsLeft;
+                    arg.RateReset = obj.RateReset;
+                    OnAccountsRecieved(this, arg);
+                }
+
+            }, ct);
         }
 
         /// <summary>
         /// Retrives an account balance given an account number
         /// </summary>
         /// <param name="id">Account number</param>
-        /// <returns></returns>
-        public async Task GetAccountBalance(string id)
+        /// <param name="cancellationTokenSource">Cancellation token source</param>
+        public void GetAccountBalanceAsync(string id, CancellationTokenSource cancellationTokenSource)
         {
-            var obj = await ApiGet<AccountBalances>(apiClient, string.Format("v1/accounts/{0}/balances", id));
-            if (obj.isSuccess)
+            CancellationToken ct = cancellationTokenSource.Token;
+            Task.Run(() =>
             {
-                var arg = new APIAccountBalancesReturnArgs();
-                arg.details = obj.q_obj;
-                arg.NumCallsLeft = obj.NumCallsLeft;
-                arg.RateReset = obj.RateReset;
-                OnAccountBalancesRecieved(this, arg);
-            }
+                ct.ThrowIfCancellationRequested();
+                var obj = ApiGet<AccountBalances>(apiClient, string.Format("v1/accounts/{0}/balances", id), ct);
+
+                //obj.Wait(ct);
+
+                if (obj.isSuccess && !ct.IsCancellationRequested)
+                {
+                    var arg = new APIAccountBalancesReturnArgs();
+                    arg.details = obj.q_obj;
+                    arg.NumCallsLeft = obj.NumCallsLeft;
+                    arg.RateReset = obj.RateReset;
+                    OnAccountBalancesRecieved(this, arg);
+                }
+
+            }, ct);
         }
 
         /// <summary>
@@ -335,18 +376,27 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="query">Search query</param>
         /// <param name="offset">Starting offset on list</param>
-        /// <returns></returns>
-        public async Task symbolSearch(string query, int offset = 0)
+        /// <param name="cancellationTokenSource">Cancellation token source</param>
+        public void GetSymbolsAsync(string query, CancellationTokenSource cancellationTokenSource, int offset = 0)
         {
-            var obj = await ApiGet<Symbols>(apiClient, string.Format("v1/symbols/search?prefix={0}&offset={1}", query, offset)); //var resp = await apiClient.GetAsync(string.Format("v1/symbols/search?prefix={0}&offset={1}",query,offset));
-            if (obj.isSuccess)
+            CancellationToken ct = cancellationTokenSource.Token;
+            Task.Run(() =>
             {
-                var arg = new APISymbolSearchReturnArgs();
-                arg.symbols = obj.q_obj;
-                arg.NumCallsLeft = obj.NumCallsLeft;
-                arg.RateReset = obj.RateReset;
-                OnSymbolSearchRecieved(this, arg);
-            }
+                ct.ThrowIfCancellationRequested();
+                var obj = ApiGet<Symbols>(apiClient, string.Format("v1/symbols/search?prefix={0}&offset={1}", query, offset, ct)); //var resp = await apiClient.GetAsync(string.Format("v1/symbols/search?prefix={0}&offset={1}",query,offset));
+
+                //obj.Wait(ct);
+
+                if (obj.isSuccess && !ct.IsCancellationRequested)
+                {
+                    var arg = new APISymbolSearchReturnArgs();
+                    arg.symbols = obj.q_obj;
+                    arg.NumCallsLeft = obj.NumCallsLeft;
+                    arg.RateReset = obj.RateReset;
+                    OnSymbolSearchRecieved(this, arg);
+                }
+
+            }, ct);
         }
 
         #endregion
@@ -377,35 +427,39 @@ namespace QuestradeAPI
         /// Sends a request to Questrade to push notifcations to this Websocket client. Data is recieved through the OnMessageCallback.
         /// </summary>
         /// <returns></returns>
-        public async Task SubToOrderNotif()
+        public void SubToOrderNotifAsync(CancellationTokenSource cancellationTokenSource)
         {
-
-            var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));//Requests server to send notification to port
-
-            if (resp.isSuccess)
+            CancellationToken ct = cancellationTokenSource.Token;
+            Task.Run(() =>
             {
-                var api_base = new Uri(_auth.api_server);
+                var resp = ApiGet<StreamPort>(apiClient, string.Format("v1/notifications?mode={0}", streamType.WebSocket.ToString()));//Requests server to send notification to port
 
-                var uri = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
-                notificationClient = new QuestradeWebsocket();
+                if (resp.isSuccess)
+                {
+                    var api_base = new Uri(_auth.api_server);
 
-                var cancelToken = new System.Threading.CancellationToken();
-                notificationClient.OnReceive += NotificationClient_OnReceive;
-                notificationClient.OnConnect += NotificationClient_OnConnect;
-                notificationClient.OnClose += NotificationClient_OnClose;
+                    var uri = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
+                    notificationClient = new QuestradeWebsocket();
 
-                await notificationClient.ConnectAsync(uri, cancelToken);
-                await notificationClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
+                    var cancelToken = new System.Threading.CancellationToken();
+                    notificationClient.OnReceive += NotificationClient_OnReceive;
+                    notificationClient.OnConnect += NotificationClient_OnConnect;
+                    notificationClient.OnClose += NotificationClient_OnClose;
 
-            }
+                    notificationClient.ConnectAsync(uri, cancelToken);
+                    notificationClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
+
+                }
+            }, ct);
+            
         }
 
-        public async Task CloseSubToOrderNotif()
+        public void CloseSubToOrderNotifAsync()
         {
             if(notificationClient != null)
             {
                 var cancelToken = new System.Threading.CancellationToken();
-                await notificationClient.CloseAsync(cancelToken);
+                notificationClient.CloseAsync(cancelToken);
             }
         }
 
@@ -463,34 +517,39 @@ namespace QuestradeAPI
         /// </summary>
         /// <param name="ids">Comma seperated symbol id</param>
         /// <returns></returns>
-        public async Task StreamQuote(string ids)
+        public void StreamQuoteAsync(string ids, CancellationTokenSource cancellationTokenSource)
         {
-            var resp = await ApiGet<StreamPort>(apiClient,string.Format("v1/markets/quotes?ids={0}&stream=true&mode={1}", ids, streamType.WebSocket.ToString()));//Requests server to send notification to port
-
-            if (resp.isSuccess)
+            CancellationToken ct = cancellationTokenSource.Token;
+            Task.Run(() =>
             {
-                //Setup Websocket to recieve data from
-                var api_base = new Uri(_auth.api_server);
+                var resp = ApiGet<StreamPort>(apiClient, string.Format("v1/markets/quotes?ids={0}&stream=true&mode={1}", ids, streamType.WebSocket.ToString()));//Requests server to send notification to port
 
-                var uri = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
-                quoteStreamClient = new QuestradeWebsocket();
+                if (resp.isSuccess)
+                {
+                    //Setup Websocket to recieve data from
+                    var api_base = new Uri(_auth.api_server);
 
-                var cancelToken = new System.Threading.CancellationToken();
-                quoteStreamClient.OnReceive += quoteStreamClient_OnReceive;
-                quoteStreamClient.OnConnect += quoteStreamClient_OnConnect;
-                quoteStreamClient.OnClose += QuoteStreamClient_OnClose;
-                await quoteStreamClient.ConnectAsync(uri, cancelToken);
-                await quoteStreamClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
-            }
+                    var uri = new Uri(string.Format("{0}{1}:{2}/", @"wss://", api_base.Host, resp.q_obj.streamPort));
+                    quoteStreamClient = new QuestradeWebsocket();
+
+                    var cancelToken = new System.Threading.CancellationToken();
+                    quoteStreamClient.OnReceive += quoteStreamClient_OnReceive;
+                    quoteStreamClient.OnConnect += quoteStreamClient_OnConnect;
+                    quoteStreamClient.OnClose += QuoteStreamClient_OnClose;
+                    quoteStreamClient.ConnectAsync(uri, cancelToken);
+                    quoteStreamClient.SendAsync(_auth.access_token, uri, cancelToken, System.Text.Encoding.ASCII);
+                }
+            }, ct);
+            
             
         }
 
-        public async Task CloseStreamQuote()
+        public void CloseStreamQuote()
         {
             if(quoteStreamClient != null)
             {
                 var cancelToken = new System.Threading.CancellationToken();
-                await quoteStreamClient.CloseAsync(cancelToken);
+                quoteStreamClient.CloseAsync(cancelToken);
             }
         }
 
